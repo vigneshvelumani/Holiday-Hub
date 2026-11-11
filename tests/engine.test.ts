@@ -137,3 +137,42 @@ console.log(moonEvents(new Date("2026-11-11T00:00:00Z"), 4).map((e) => `${e.name
 console.log(`\n${pass} passed, ${fail} failed, ${soft.length} soft warnings`);
 soft.forEach((s) => console.log("  warn: " + s));
 if (fail) process.exit(1);
+
+// ── phase 2: sky scenes, time zones, location sanity ──
+{
+  const { sceneFor } = await import("../src/lib/scene.ts");
+  const { nextDstChange, tzOffset, gmtLabel, dayShift, instantIn } = await import("../src/lib/clock.ts");
+  const { clockMismatch } = await import("../src/lib/location.ts");
+  let p2 = 0;
+  const ok = (label: string, cond: boolean) => (cond ? p2++ : (console.log("FAIL " + label), process.exitCode = 1));
+  ok("clear day", sceneFor({ code: 0, isDay: true }).sky === "clear" && !sceneFor({ code: 0, isDay: true }).night);
+  ok("clear night", sceneFor({ code: 1, isDay: false }).night);
+  ok("partly cloudy", sceneFor({ code: 2, isDay: true }).sky === "cloudy");
+  ok("overcast", sceneFor({ code: 3, isDay: true }).sky === "overcast" && sceneFor({ code: 3, isDay: true }).cloud >= 0.9);
+  ok("rain never sunny", sceneFor({ code: 63, isDay: true }).sky === "rain" && sceneFor({ code: 63, isDay: true }).intensity > 0.5);
+  ok("drizzle lighter than heavy rain", sceneFor({ code: 51, isDay: true }).intensity < sceneFor({ code: 65, isDay: true }).intensity);
+  ok("measured rain raises intensity", sceneFor({ code: 61, isDay: true, precip: 8 }).intensity === 1);
+  ok("storm", sceneFor({ code: 95, isDay: false }).sky === "storm");
+  ok("snow", sceneFor({ code: 73, isDay: true }).sky === "snow");
+  ok("fog", sceneFor({ code: 45, isDay: true }).sky === "fog");
+  ok("dry sky has no rain", sceneFor({ code: 0, isDay: true, precip: 3 }).intensity === 0);
+  const at = new Date("2026-11-11T08:00:00Z");
+  ok("IST offset", tzOffset("Asia/Kolkata", at) === 330 && gmtLabel(330) === "GMT+5:30");
+  ok("New York winter offset", tzOffset("America/New_York", at) === -300);
+  ok("New York summer offset", tzOffset("America/New_York", new Date("2026-07-01T12:00:00Z")) === -240);
+  const dst = nextDstChange("America/New_York", at);
+  ok("US DST starts 14 Mar 2027 +1h", !!dst && dst.at.toISOString().slice(0, 16) === "2027-03-14T07:00" && dst.deltaMin === 60);
+  const eu = nextDstChange("Europe/London", new Date("2027-01-10T00:00:00Z"));
+  ok("UK DST starts 28 Mar 2027", !!eu && eu.at.toISOString().slice(0, 10) === "2027-03-28");
+  ok("India has no DST", nextDstChange("Asia/Kolkata", at) === null);
+  ok("wall-clock → instant", instantIn("Asia/Kolkata", 2026, 11, 11, 13, 30).toISOString() === "2026-11-11T08:00:00.000Z");
+  ok("dayShift is -1, 0 or 1", [-1, 0, 1].includes(dayShift("Pacific/Auckland", at)));
+  // a place in another zone than the device clock must be flagged for confirmation
+  const here = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  ok("same zone is not a mismatch", clockMismatch({ name: "x", lat: 0, lon: 0, tz: here }, at) === false);
+  ok("other zone is a mismatch", clockMismatch({ name: "x", lat: 0, lon: 0, tz: tzOffset(here, at) === 600 ? "Asia/Kolkata" : "Australia/Brisbane" }, at) === true);
+  console.log(`phase 2: ${p2} checks passed`);
+}
+
+// the app modules open a BroadcastChannel, which would keep Node alive
+process.exit(process.exitCode || 0);

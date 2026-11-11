@@ -27,7 +27,7 @@ export function SettingsPage() {
       <div className="page-head"><div><h1 className="page-title">Settings</h1><p className="page-sub">Preferences are saved in this browser. There are no accounts and nothing to sign in to.</p></div></div>
       <div className="stack stagger" style={{ gap: 16 }}>
         <section className="card">
-          <div className="card-head"><span className="card-title">Appearance &amp; calendar</span></div>
+          <div className="card-head"><h2 className="card-title">Appearance &amp; calendar</h2></div>
           <div className="list">
             <SettingRow title="Theme"><Seg value={s.theme} onChange={(v) => set({ theme: v })} label="Theme" options={[{ value: "system", label: "System" }, { value: "light", label: "Light" }, { value: "dark", label: "Dark" }]} /></SettingRow>
             <SettingRow title="Sidebar" desc="Collapse the side menu to icons to give the page more room."><Seg value={s.sidebarCollapsed ? "min" : "full"} onChange={(v) => set({ sidebarCollapsed: v === "min" })} label="Sidebar" options={[{ value: "full", label: "Expanded" }, { value: "min", label: "Collapsed" }]} /></SettingRow>
@@ -47,12 +47,12 @@ export function SettingsPage() {
         </section>
 
         <section className="card">
-          <div className="card-head"><span className="card-title">Location</span><span className="xs muted">used for weather and Panchangam</span></div>
+          <div className="card-head"><h2 className="card-title">Location</h2><span className="xs muted">used for weather and Panchangam</span></div>
           <div className="card-pad"><LocationPicker /></div>
         </section>
 
         <section className="card">
-          <div className="card-head"><span className="card-title">Notifications</span></div>
+          <div className="card-head"><h2 className="card-title">Notifications</h2></div>
           <div className="list">
             <SettingRow title="Browser notifications" desc={perm === "granted" ? "Allowed. Alerts appear while this site is open in a tab; anything missed while it was closed is shown when you come back." : perm === "denied" ? "Blocked in your browser's settings for this site. In-app alerts still work." : perm === "unsupported" ? "Not supported by this browser. In-app alerts still work." : "Not enabled yet. In-app alerts work without it."}>
               {perm === "default" && <button className="btn sm" onClick={async () => setPerm(await requestNotificationPermission())}>Enable</button>}
@@ -77,7 +77,7 @@ export function SettingsPage() {
         </section>
 
         <section className="card">
-          <div className="card-head"><span className="card-title">Dashboard</span><span className="xs muted">choose what the dashboard shows</span></div>
+          <div className="card-head"><h2 className="card-title">Dashboard</h2><span className="xs muted">choose what the dashboard shows</span></div>
           <div className="list">
             {WIDGETS.map(([k, label]) => (
               <SettingRow key={k} title={label}><Switch checked={!!s.widgets[k]} onChange={(v) => set({ widgets: { ...s.widgets, [k]: v } })} label={label} /></SettingRow>
@@ -86,7 +86,7 @@ export function SettingsPage() {
         </section>
 
         <section className="card">
-          <div className="card-head"><span className="card-title">Task categories</span></div>
+          <div className="card-head"><h2 className="card-title">Task categories</h2></div>
           <div className="card-pad stack">
             <div className="row wrap">
               {TASK_CATEGORIES.map((c) => <span key={c} className="badge">{c}</span>)}

@@ -89,6 +89,18 @@ export interface AppNotification {
   dateKey?: Ymd;
 }
 
+export interface Bookmark {
+  id: string;
+  link: string;
+  title: string;
+  source: string;
+  pubDate: string | null;
+  summary: string;
+  image?: string;
+  category?: string;
+  savedAt: number;
+}
+
 export interface Collections {
   tasks: Task[];
   reminders: Reminder[];
@@ -97,9 +109,10 @@ export interface Collections {
   moods: Mood[];
   birthdays: Birthday[];
   notifications: AppNotification[];
+  bookmarks: Bookmark[];
 }
 export type StoreName = keyof Collections;
-const STORES: StoreName[] = ["tasks", "reminders", "events", "notes", "moods", "birthdays", "notifications"];
+const STORES: StoreName[] = ["tasks", "reminders", "events", "notes", "moods", "birthdays", "notifications", "bookmarks"];
 
 export interface DataState extends Collections {
   ready: boolean;
@@ -109,7 +122,7 @@ export interface DataState extends Collections {
 
 // ── IndexedDB ────────────────────────────────────────────────────────────────
 const DB_NAME = "almanac-calendar";
-const DB_VERSION = 1;
+const DB_VERSION = 2; // v2 adds "bookmarks"
 let dbPromise: Promise<IDBDatabase> | null = null;
 
 function openDb(): Promise<IDBDatabase> {
@@ -142,7 +155,7 @@ function tx<T>(store: StoreName, mode: IDBTransactionMode, run: (s: IDBObjectSto
 }
 
 // ── in-memory mirror + subscriptions ─────────────────────────────────────────
-let state: DataState = { tasks: [], reminders: [], events: [], notes: [], moods: [], birthdays: [], notifications: [], ready: false, backend: "indexeddb" };
+let state: DataState = { tasks: [], reminders: [], events: [], notes: [], moods: [], birthdays: [], notifications: [], bookmarks: [], ready: false, backend: "indexeddb" };
 const listeners = new Set<() => void>();
 const emit = () => listeners.forEach((l) => l());
 const channel = typeof BroadcastChannel !== "undefined" ? new BroadcastChannel("almanac-calendar") : null;
@@ -246,6 +259,11 @@ export interface Settings {
   tempUnit: "C" | "F";
   defaultView: ViewName;
   location: Place;
+  /** how the active location was chosen — "default" means nobody has chosen yet */
+  locationSource: "default" | "gps" | "manual";
+  locationUpdatedAt: number | null;
+  /** the first-visit location question has been shown */
+  locationPrompted: boolean;
   /** holiday categories + "birthday" */
   categories: Record<string, boolean>;
   layers: { tasks: boolean; reminders: boolean; events: boolean; officeSaturday: boolean; bankSaturday: boolean; weather: boolean; salary: boolean; notes: boolean };
@@ -269,6 +287,9 @@ export const DEFAULT_SETTINGS: Settings = {
   tempUnit: "C",
   defaultView: "month",
   location: CHENNAI,
+  locationSource: "default",
+  locationUpdatedAt: null,
+  locationPrompted: false,
   categories: { international: true, india: true, tamilnadu: true, us: true, birthday: true, bank_govt: true, bank_private: true },
   layers: { tasks: true, reminders: true, events: true, officeSaturday: true, bankSaturday: true, weather: true, salary: true, notes: true },
   salaryDay: 5,
@@ -293,7 +314,10 @@ function readSettings(): Settings {
         notify: { ...DEFAULT_SETTINGS.notify, ...raw.notify },
         widgets: { ...DEFAULT_SETTINGS.widgets, ...raw.widgets },
         location: raw.location && typeof raw.location.lat === "number" ? raw.location : DEFAULT_SETTINGS.location,
-        worldClocks: Array.isArray(raw.worldClocks) ? raw.worldClocks.filter((c: WorldClock) => c && typeof c.tz === "string") : DEFAULT_SETTINGS.worldClocks,
+        // clocks saved before coordinates existed pick them up from the built-in list
+        worldClocks: Array.isArray(raw.worldClocks)
+          ? raw.worldClocks.filter((c: WorldClock) => c && typeof c.tz === "string").map((c: WorldClock) => (c.lat == null ? { ...c, ...(DEFAULT_CLOCKS.find((d) => d.tz === c.tz && d.label === c.label) || {}) } : c))
+          : DEFAULT_SETTINGS.worldClocks,
       };
     }
   } catch {

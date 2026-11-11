@@ -122,16 +122,53 @@ export function instantIn(tz: string, y: number, m: number, d: number, h: number
 export interface WorldClock {
   tz: string;
   label: string;
+  /** known for cities added by search — enables sunrise / sunset */
+  lat?: number;
+  lon?: number;
 }
 export const DEFAULT_CLOCKS: WorldClock[] = [
-  { tz: "America/New_York", label: "New York" },
-  { tz: "America/Los_Angeles", label: "Los Angeles" },
-  { tz: "Europe/London", label: "London" },
-  { tz: "Asia/Dubai", label: "Dubai" },
-  { tz: "Asia/Singapore", label: "Singapore" },
-  { tz: "Asia/Tokyo", label: "Tokyo" },
-  { tz: "Australia/Sydney", label: "Sydney" },
+  { tz: "America/New_York", label: "New York", lat: 40.7128, lon: -74.006 },
+  { tz: "America/Los_Angeles", label: "Los Angeles", lat: 34.0522, lon: -118.2437 },
+  { tz: "Europe/London", label: "London", lat: 51.5072, lon: -0.1276 },
+  { tz: "Asia/Dubai", label: "Dubai", lat: 25.2048, lon: 55.2708 },
+  { tz: "Asia/Singapore", label: "Singapore", lat: 1.3521, lon: 103.8198 },
+  { tz: "Asia/Tokyo", label: "Tokyo", lat: 35.6762, lon: 139.6503 },
+  { tz: "Australia/Sydney", label: "Sydney", lat: -33.8688, lon: 151.2093 },
 ];
+
+/**
+ * The next daylight-saving change in a zone within a year, found from the zone's own
+ * rules (the browser's time-zone database) — not from a table of dates.
+ */
+export function nextDstChange(tz: string, from: Date = new Date()): { at: Date; deltaMin: number } | null {
+  const base = tzOffset(tz, from);
+  let lo = from.getTime();
+  let hi = lo;
+  let found = false;
+  for (let i = 1; i <= 370; i++) {
+    hi = from.getTime() + i * 86400000;
+    if (tzOffset(tz, new Date(hi)) !== base) {
+      found = true;
+      break;
+    }
+    lo = hi;
+  }
+  if (!found) return null;
+  while (hi - lo > 60000) {
+    const mid = Math.floor((lo + hi) / 2);
+    if (tzOffset(tz, new Date(mid)) === base) lo = mid;
+    else hi = mid;
+  }
+  return { at: new Date(hi), deltaMin: tzOffset(tz, new Date(hi)) - base };
+}
+
+/** Calendar-day difference between a zone and the device: -1, 0 or +1. */
+export function dayShift(tz: string, d: Date): number {
+  const a = zoneParts(tz, d);
+  const b = zoneParts(LOCAL_TZ, d);
+  return Math.round((Date.UTC(a.year, a.month - 1, a.day) - Date.UTC(b.year, b.month - 1, b.day)) / 86400000);
+}
+
 
 /** Name for "here": the chosen location when it shares this device's clock, otherwise the zone's city. */
 export function hereName(location: { name: string; tz: string }, d: Date = new Date()): string {

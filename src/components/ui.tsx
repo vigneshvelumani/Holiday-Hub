@@ -24,6 +24,10 @@ export interface Ui {
   editReminder: (r: Reminder | null, date?: Ymd) => void;
   editEvent: (e: CalEvent | null, date?: Ymd) => void;
   manageBirthdays: () => void;
+  /** open the location dialog */
+  openLocation: () => void;
+  /** open an article in the in-app reader */
+  readArticle: (id: string) => void;
 }
 export const UiContext = createContext<Ui>(null as unknown as Ui);
 export const useUi = () => useContext(UiContext);
@@ -236,7 +240,7 @@ export function useItemClick() {
 }
 
 /** The Moon as it looks for a given Sun–Moon elongation (0 = new, 180 = full). */
-export function MoonDisc({ elongation, size = 96 }: { elongation: number; size?: number }) {
+export function MoonDisc({ elongation, size = 96, dark }: { elongation: number; size?: number; /** on a night-sky background: unlit side dark, lit side pale */ dark?: boolean }) {
   const e = ((elongation % 360) + 360) % 360;
   const r = 46;
   const k = Math.cos((e * Math.PI) / 180); // +1 new … −1 full
@@ -245,8 +249,12 @@ export function MoonDisc({ elongation, size = 96 }: { elongation: number; size?:
   const lit = `M 50 ${50 - r} A ${r} ${r} 0 0 ${waxing ? 1 : 0} 50 ${50 + r} A ${Math.abs(k) * r} ${r} 0 0 ${(k > 0) === waxing ? 0 : 1} 50 ${50 - r} Z`;
   return (
     <svg width={size} height={size} viewBox="0 0 100 100" role="img" aria-label={`Moon, ${Math.round(((1 - k) / 2) * 100)}% illuminated`}>
-      <circle cx="50" cy="50" r={r} fill="var(--surface-2)" stroke="var(--line-strong)" />
-      <path d={lit} fill="var(--c-reminder)" opacity="0.85" style={{ transition: "d 0.6s ease" }} />
+      <circle cx="50" cy="50" r={r} fill={dark ? "#1a2240" : "var(--surface-2)"} stroke={dark ? "#4a5788" : "var(--line-strong)"} />
+      <path d={lit} fill={dark ? "#f3ecd6" : "var(--c-reminder)"} opacity={dark ? 1 : 0.85} style={{ transition: "d 0.6s ease" }} />
+      {/* maria: faint, fixed markings so the disc reads as the Moon rather than a plain circle */}
+      <g fill={dark ? "#1a2240" : "var(--ink)"} opacity={dark ? 0.1 : 0.07}>
+        <circle cx="38" cy="36" r="9" /><circle cx="60" cy="30" r="6" /><circle cx="64" cy="56" r="10" /><circle cx="42" cy="64" r="7" /><circle cx="30" cy="52" r="4" />
+      </g>
     </svg>
   );
 }

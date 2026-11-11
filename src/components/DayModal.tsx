@@ -43,11 +43,26 @@ export function DayModal({ date, onClose, onDate }: { date: Date; onClose: () =>
     }
   }, [key, s.location]);
 
+  // focus moves into the dialog when it opens and back to where it was when it closes
+  useEffect(() => {
+    const before = document.activeElement as HTMLElement | null;
+    ref.current?.querySelector<HTMLElement>("[data-autofocus]")?.focus();
+    return () => before?.focus?.();
+  }, []);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
       if (document.querySelectorAll(".overlay").length > 1) return; // a form is open on top
       if (e.key === "Escape") onClose();
+      if (e.key === "Tab" && ref.current) {
+        const f = [...ref.current.querySelectorAll<HTMLElement>("button:not([disabled]), input, select, textarea, a[href]")].filter((x) => x.offsetParent !== null);
+        if (f.length) {
+          const first = f[0], last = f[f.length - 1];
+          if (!ref.current.contains(document.activeElement)) (e.preventDefault(), first.focus());
+          else if (e.shiftKey && document.activeElement === first) (e.preventDefault(), last.focus());
+          else if (!e.shiftKey && document.activeElement === last) (e.preventDefault(), first.focus());
+        }
+      }
       if (["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName)) return;
       if (e.key === "ArrowLeft") onDate(addDays(date, -1));
       if (e.key === "ArrowRight") onDate(addDays(date, 1));

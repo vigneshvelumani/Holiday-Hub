@@ -9,7 +9,8 @@ import { initStore, removeItem, replaceCollection, saveItem, updateSettings, use
 import { CalendarPage } from "./components/Calendar.tsx";
 import { DayModal } from "./components/DayModal.tsx";
 import { LOCAL_TZ, fmtZone, tzName, useNow, useTodayKey } from "./lib/clock.ts";
-import { resolvePlace } from "./lib/services.ts";
+import { resolvePlace } from "./lib/location.ts";
+import { LocationChip, LocationDialog } from "./components/Location.tsx";
 import { WorldClockPage } from "./pages/World.tsx";
 import { BirthdaysModal, EventForm, ReminderForm, TaskForm } from "./components/Forms.tsx";
 import { UiContext, tone, useUi as useContextUi, type Route, type Ui } from "./components/ui.tsx";
@@ -30,7 +31,7 @@ const NAV: { id: Route; label: string; icon: typeof Bell; group: string }[] = [
 ];
 const ROUTES = NAV.map((n) => n.id);
 const routeFromHash = (): Route => {
-  const h = location.hash.replace(/^#\/?/, "") as Route;
+  const h = location.hash.replace(/^#\/?/, "").split("/")[0] as Route;
   return ROUTES.includes(h) ? h : "dashboard";
 };
 
@@ -64,6 +65,12 @@ export default function App() {
   const [editing, setEditing] = useState<Editing>(null);
   const [more, setMore] = useState(false);
   const [day, setDay] = useState<Date | null>(null);
+  const [locOpen, setLocOpen] = useState<false | "welcome" | "manual">(false);
+  // first visit: ask where the visitor is instead of silently assuming a city
+  useEffect(() => {
+    if (data.ready && !s.locationPrompted) setLocOpen("welcome");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.ready]);
   useTodayKey(); // re-render everything when the date rolls over at midnight
   useTheme(s.theme);
 
@@ -87,6 +94,7 @@ export default function App() {
 
   const go = useCallback((r: Route) => {
     if (location.hash !== "#/" + r) location.hash = "/" + r;
+    document.getElementById("main")?.focus({ preventScroll: true });
     setRoute(r);
     setMore(false);
     window.scrollTo({ top: 0 });
@@ -108,6 +116,11 @@ export default function App() {
       editReminder: (r, date) => setEditing({ kind: "reminder", item: r ?? newReminder(date || ymd(today())), isNew: !r }),
       editEvent: (e, date) => setEditing({ kind: "event", item: e ?? newEvent(date || ymd(today())), isNew: !e }),
       manageBirthdays: () => setEditing({ kind: "birthdays" }),
+      openLocation: () => setLocOpen("manual"),
+      readArticle: (id: string) => {
+        location.hash = "/news/a/" + id;
+        window.scrollTo({ top: 0 });
+      },
     }),
     [route, focus, view, go],
   );
@@ -118,6 +131,7 @@ export default function App() {
 
   return (
     <UiContext.Provider value={ui}>
+      <a className="skip" href="#main" onClick={(e) => (e.preventDefault(), document.getElementById("main")?.focus())}>Skip to content</a>
       <div className={"shell" + (s.sidebarCollapsed ? " collapsed" : "")}>
         <nav className="sidebar" aria-label="Main">
           <div className="brand">
@@ -142,12 +156,13 @@ export default function App() {
         </nav>
 
         <div className="main">
-          <header className="topbar">
+          <header className="topbar" role="banner">
             <span className="brand only-sm" style={{ padding: 0 }}>
               <span className="brand-mark" aria-hidden>HH</span>
             </span>
             <GlobalSearch />
             <div className="grow hide-sm" />
+            <span className="hide-sm"><LocationChip onOpen={() => setLocOpen("manual")} /></span>
             <ClockChip hour12={s.hour12} onClick={() => go("world")} />
             <NewMenu date={newDate} />
             <button className="btn ghost icon" aria-label={`Switch to ${document.documentElement.dataset.theme === "dark" ? "light" : "dark"} theme`} title="Toggle theme" onClick={() => updateSettings({ theme: document.documentElement.dataset.theme === "dark" ? "light" : "dark" })}>
@@ -160,7 +175,7 @@ export default function App() {
               This browser is blocking local storage (this often happens in private browsing), so anything you add will be lost when the tab closes.
             </div>
           )}
-          <main id="main">{data.ready ? <Page /> : <div className="page"><div className="skeleton" style={{ height: 120 }} /><div className="skeleton" style={{ height: 320, marginTop: 16 }} /></div>}</main>
+          <main id="main" tabIndex={-1} style={{ outline: "none" }}>{data.ready ? <Page /> : <div className="page"><div className="skeleton" style={{ height: 120 }} /><div className="skeleton" style={{ height: 320, marginTop: 16 }} /></div>}</main>
         </div>
 
         <nav className="bottom-nav" aria-label="Main">
@@ -192,6 +207,7 @@ export default function App() {
       {editing?.kind === "reminder" && <ReminderForm key={editing.item.id} initial={editing.item} isNew={editing.isNew} onClose={() => setEditing(null)} />}
       {editing?.kind === "event" && <EventForm key={editing.item.id} initial={editing.item} isNew={editing.isNew} onClose={() => setEditing(null)} />}
       {editing?.kind === "birthdays" && <BirthdaysModal onClose={() => setEditing(null)} />}
+      {locOpen && <LocationDialog welcome={locOpen === "welcome"} onClose={() => setLocOpen(false)} />}
       <Toasts />
     </UiContext.Provider>
   );

@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { MonthView, type WeatherMap } from "./MonthView.tsx";
 import { Bell, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, FileDown, Landmark, Loader2, Lock, Plus, SlidersHorizontal, SquareCheck, Sunrise, Sunset } from "lucide-react";
 import {
   MONTHS, addDays, addMonths, addYears, daysInMonth, fmt, fmtLong, fmtMonthYear, fmtTime, isoWeek, mkDate, monthGrid, parseYmd, relDays, sameDay, today, weekDays, ymd, type Ymd,
@@ -18,98 +19,11 @@ const VIEWS: { value: ViewName; label: string }[] = [
   { value: "month", label: "Month" }, { value: "week", label: "Week" }, { value: "day", label: "Day" },
   { value: "year", label: "Year" }, { value: "agenda", label: "Agenda" }, { value: "upcoming", label: "Upcoming" },
 ];
-type WeatherMap = Map<Ymd, WeatherDay>;
+export { MonthView };
 
 export function useWeatherMap(s: Settings): WeatherMap {
   const w = useWeather(s);
   return useMemo(() => new Map((s.layers.weather && w.data ? w.data.daily : []).map((d) => [d.date, d])), [w.data, s.layers.weather]);
-}
-
-// ── Month ────────────────────────────────────────────────────────────────────
-export function MonthView({ focus, selected, onSelect, data, s, filter, weather, max = 3 }: { focus: Date; selected: Date | null; onSelect: (d: Date) => void; data: DataState; s: Settings; filter?: ItemFilter; weather?: WeatherMap; max?: number }) {
-  const onItem = useItemClick();
-  const [dropKey, setDropKey] = useState<string | null>(null);
-  const days = useMemo(() => monthGrid(focus.getFullYear(), focus.getMonth(), s.weekStartsOn), [focus.getFullYear(), focus.getMonth(), s.weekStartsOn]);
-  const now = today();
-  const noteDays = useMemo(() => new Set(data.notes.filter((n) => n.content.trim()).map((n) => n.id)), [data.notes]);
-  const moods = useMemo(() => new Map(data.moods.map((m) => [m.id, m.mood])), [data.moods]);
-
-  const drop = (e: DragEvent, key: Ymd) => {
-    e.preventDefault();
-    setDropKey(null);
-    try {
-      const src = JSON.parse(e.dataTransfer.getData("text/plain")) as { key: string; date: Ymd };
-      const item = itemsOn(parseYmd(src.date), data, s).find((i) => i.key === src.key);
-      if (item && moveItem(item, key)) {
-        const series = (item.task || item.reminder || item.event)?.recurrence.freq !== "none";
-        toast(`Moved to ${fmt(parseYmd(key), { weekday: "short", day: "numeric", month: "short" })}`, series ? `${item.title} — the whole repeating series was shifted.` : item.title, "ok");
-      }
-    } catch {
-      /* not one of ours */
-    }
-  };
-
-  return (
-    <div className="month anim" role="grid" aria-label={fmtMonthYear(focus)}>
-      {Array.from({ length: 7 }, (_, i) => (s.weekStartsOn + i) % 7).map((d) => (
-        <div key={d} className={"dow" + (d === 0 ? " sun" : "")} role="columnheader">
-          {DOW[d]}
-        </div>
-      ))}
-      {days.map((d) => {
-        const key = ymd(d);
-        const out = d.getMonth() !== focus.getMonth();
-        const items = itemsOn(d, data, s, filter);
-        const sat = s.layers.officeSaturday ? officeSaturday(d) : null;
-        const bank = s.layers.bankSaturday ? bankSaturday(d) : null;
-        const w = weather?.get(key);
-        const mood = moods.get(key);
-        return (
-          <div
-            key={key}
-            role="gridcell"
-            tabIndex={0}
-            className={`cell ${out ? "out" : ""} ${selected && sameDay(d, selected) ? "sel" : ""} ${dropKey === key ? "drop" : ""} ${sat === "working" ? "sat-working" : sat === "off" ? "sat-off" : ""}`}
-            aria-label={`${fmtLong(d)}${sat ? ", " + SATURDAY_LABEL[sat].long : ""}${items.length ? `, ${items.length} item${items.length > 1 ? "s" : ""}` : ""}`}
-            onClick={() => onSelect(d)}
-            onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onSelect(d))}
-            onDragOver={(e) => (e.preventDefault(), setDropKey(key))}
-            onDragLeave={() => setDropKey((k) => (k === key ? null : k))}
-            onDrop={(e) => drop(e, key)}
-          >
-            <div className="cell-top">
-              <span className={`daynum ${sameDay(d, now) ? "today" : d.getDay() === 0 ? "sun" : ""}`}>{d.getDate()}</span>
-              {sat && <SatTag status={sat} />}
-              <span className="cell-meta">
-                {mood && <span title={`Mood: ${mood}`}>{MOODS.find((m) => m.value === mood)?.emoji}</span>}
-                {noteDays.has(key) && s.layers.notes && <span className="dot" style={tone("ink")} title="Has a note" />}
-                {w && (
-                  <span className="row num" style={{ gap: 2 }} title={`${weatherLabel(w.code)}, ${Math.round(w.tmax)}° / ${Math.round(w.tmin)}°`}>
-                    <WeatherIcon code={w.code} size={11} />
-                    {Math.round(w.tmax)}°
-                  </span>
-                )}
-              </span>
-            </div>
-            {bank && (
-              <span className="bankline" title="Bank Saturday rule: 2nd and 4th Saturdays are bank holidays">
-                <Landmark size={10} /> Banks {bank}
-              </span>
-            )}
-            {items.slice(0, max).map((i) => (
-              <ItemChip key={i.key} item={i} onClick={onItem} draggable hour12={s.hour12} showTime={false} />
-            ))}
-            {items.length > max && <span className="more">+{items.length - max} more</span>}
-            <div className="cell-dots">
-              {items.slice(0, 4).map((i) => (
-                <ItemDot key={i.key} item={i} />
-              ))}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
 }
 
 // ── Week ─────────────────────────────────────────────────────────────────────
@@ -312,7 +226,7 @@ function UpcomingView({ data, s, filter }: { data: DataState; s: Settings; filte
   return (
     <div className="cols2">
       <div className="card">
-        <div className="card-head"><span className="card-title"><Lock size={13} /> Office Saturdays</span><span className="xs muted">fixed schedule</span></div>
+        <div className="card-head"><h2 className="card-title"><Lock size={13} /> Office Saturdays</h2><span className="xs muted">fixed schedule</span></div>
         <div className="list">
           {sats.map((d) => (
             <button key={ymd(d)} className={"list-row click " + (officeSaturday(d) === "off" ? "sat-off" : "sat-working")} style={{ border: 0, width: "100%", background: "none", textAlign: "left", alignItems: "center" }} onClick={() => ui.openDay(d)}>
@@ -327,7 +241,7 @@ function UpcomingView({ data, s, filter }: { data: DataState; s: Settings; filte
       </div>
       {groups.map((g) => (
         <div className="card" key={g.title}>
-          <div className="card-head"><span className="card-title">{g.title}</span><span className="xs muted">{g.rows.length} shown</span></div>
+          <div className="card-head"><h2 className="card-title">{g.title}</h2><span className="xs muted">{g.rows.length} shown</span></div>
           <div className="list">
             {g.rows.length === 0 && <Empty title={g.none} />}
             {g.rows.map(({ d, i }) => (

@@ -12,9 +12,13 @@ export interface Place {
   lon: number;
   /** IANA timezone, e.g. "Asia/Kolkata" */
   tz: string;
+  city?: string;
+  region?: string;
+  country?: string;
+  countryCode?: string;
 }
 
-export const CHENNAI: Place = { name: "Chennai, Tamil Nadu, India", lat: 13.0827, lon: 80.2707, tz: "Asia/Kolkata" };
+export const CHENNAI: Place = { name: "Chennai, Tamil Nadu, India", lat: 13.0827, lon: 80.2707, tz: "Asia/Kolkata", city: "Chennai", region: "Tamil Nadu", country: "India", countryCode: "IN" };
 export const NEW_DELHI: Place = { name: "New Delhi, India", lat: 28.6139, lon: 77.209, tz: "Asia/Kolkata" };
 
 const norm360 = (x: number) => ((x % 360) + 360) % 360;

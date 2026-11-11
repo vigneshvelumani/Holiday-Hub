@@ -1,79 +1,26 @@
-import { useMemo, useState, type FormEvent } from "react";
-import { Droplets, Eye, Gauge, Loader2, LocateFixed, MapPin, Navigation, RefreshCw, Search, Sun, Sunrise, Sunset, Thermometer, Wind } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Droplets, Eye, Gauge, MapPin, Navigation, RefreshCw, Sun, Sunrise, Sunset, Thermometer, Wind } from "lucide-react";
 import { fmt, parseYmd, ymd } from "../lib/dates.ts";
-import { fmtInZone, panchangam, zonedInstant, type Place } from "../lib/astro.ts";
+import { fmtInZone, panchangam, zonedInstant } from "../lib/astro.ts";
 import { fmtZone, fmtZoneDate, tzLabel, useNow } from "../lib/clock.ts";
-import { toast } from "../lib/notify.ts";
-import { aqiBand, compass, locateMe, searchPlaces, useWeather, uvBand, weatherLabel, type Weather, type WeatherHour } from "../lib/services.ts";
+import { placeCity, placeRest } from "../lib/location.ts";
+import { aqiBand, compass, uvBand, weatherLabel, type Weather, type WeatherHour } from "../lib/services.ts";
+import { useSky } from "../lib/sky.ts";
+import { SkyBox } from "../components/SkyBox.tsx";
 import { updateSettings, useSettings } from "../lib/store.ts";
 import { Empty, ErrorNote, MoonDisc, Seg, WeatherIcon, useUi } from "../components/ui.tsx";
 import { timeAgo } from "./Dashboard.tsx";
 
-// ── location picker (also used in Settings and Astrology) ────────────────────
-export function LocationPicker({ onPicked }: { onPicked?: () => void }) {
+/** Shows the active location with a button to change it (used on Settings and Astrology). */
+export function LocationPicker() {
+  const ui = useUi();
   const s = useSettings();
-  const [q, setQ] = useState("");
-  const [results, setResults] = useState<Place[] | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState("");
-  const pick = (p: Place) => {
-    updateSettings({ location: p });
-    setResults(null);
-    setQ("");
-    toast("Location updated", p.name, "ok");
-    onPicked?.();
-  };
-  const find = async (e: FormEvent) => {
-    e.preventDefault();
-    if (q.trim().length < 2) return;
-    setBusy(true);
-    setErr("");
-    try {
-      setResults(await searchPlaces(q.trim()));
-    } catch (e2) {
-      setErr((e2 as Error).message || "Location search failed.");
-      setResults(null);
-    } finally {
-      setBusy(false);
-    }
-  };
-  const gps = async () => {
-    setBusy(true);
-    setErr("");
-    try {
-      pick(await locateMe());
-    } catch (e2) {
-      setErr((e2 as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  };
   return (
-    <div className="stack tight">
-      <div className="row wrap">
-        <MapPin size={15} /> <span className="strong">{s.location.name}</span>
-        <span className="small muted">{tzLabel(s.location.tz)}</span>
-      </div>
-      <form className="row" onSubmit={find}>
-        <div className="search grow" style={{ maxWidth: "none" }}>
-          <Search size={15} />
-          <input className="input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search a city, town or area…" aria-label="Search location" />
-        </div>
-        <button className="btn" type="submit" disabled={busy || q.trim().length < 2}>{busy ? <Loader2 size={14} className="spin" /> : "Search"}</button>
-        <button className="btn" type="button" onClick={gps} disabled={busy} title="Use my current location"><LocateFixed size={14} /> <span className="hide-sm">Use my location</span></button>
-      </form>
-      {err && <ErrorNote message={err} />}
-      {results && (
-        <div className="card list anim">
-          {results.length === 0 && <Empty title="No places found">Check the spelling or try a nearby city.</Empty>}
-          {results.map((p) => (
-            <button key={p.name + p.lat} className="list-row click" style={{ border: 0, background: "none", width: "100%", textAlign: "left" }} onClick={() => pick(p)}>
-              <MapPin size={14} style={{ marginTop: 3 }} />
-              <div className="grow"><div className="strong">{p.name}</div><div className="xs muted">{tzLabel(p.tz)}</div></div>
-            </button>
-          ))}
-        </div>
-      )}
+    <div className="row wrap">
+      <MapPin size={15} /> <span className="strong">{s.location.name}</span>
+      <span className="small muted">{tzLabel(s.location.tz)}</span>
+      <span className="grow" />
+      <button className="btn" onClick={ui.openLocation}>Change location</button>
     </div>
   );
 }
@@ -150,9 +97,9 @@ export function WeatherPage() {
   const ui = useUi();
   const s = useSettings();
   const now = useNow(60000);
-  const { data, loading, error, stale, refresh } = useWeather(s);
+  const sky = useSky(s);
+  const { data, loading, error, stale, refresh } = sky.weather;
   const [metric, setMetric] = useState<Metric>("temp");
-  const [picking, setPicking] = useState(false);
   const hours = data?.hourly.slice(0, 24) ?? [];
   const moon = useMemo(() => {
     try {
@@ -178,25 +125,25 @@ export function WeatherPage() {
     <div className="page">
       <div className="page-head">
         <div>
-          <h1 className="page-title">{s.location.name.split(",").slice(0, 2).join(",")}</h1>
-          <p className="page-sub">{s.location.name.split(",").slice(2).join(",").trim() || s.location.name} · {fmtZoneDate(now, tz)}, {fmtZone(now, tz, s.hour12)} local time{data ? ` · updated ${timeAgo(data.fetchedAt)}, refreshes automatically` : ""}</p>
+          <h1 className="page-title">{placeCity(s.location)}</h1>
+          <p className="page-sub">{placeRest(s.location) || s.location.name} · {tzLabel(tz, now)} · {fmtZoneDate(now, tz)}, {fmtZone(now, tz, s.hour12)} local time{data ? ` · updated ${timeAgo(data.fetchedAt)}, refreshes automatically` : ""}</p>
         </div>
         <div className="row wrap">
-          <button className="btn" onClick={() => setPicking((v) => !v)} aria-expanded={picking}><MapPin size={14} /> Change location</button>
+          <button className="btn" onClick={ui.openLocation}><MapPin size={14} /> Change location</button>
           <Seg value={s.tempUnit} onChange={(v) => updateSettings({ tempUnit: v })} label="Temperature unit" options={[{ value: "C", label: "°C" }, { value: "F", label: "°F" }]} />
           <button className="btn icon" onClick={refresh} disabled={loading} aria-label="Refresh now" title="Refresh now"><RefreshCw size={14} className={loading ? "spin" : ""} /></button>
         </div>
       </div>
-      {picking && <div className="card card-pad" style={{ marginBottom: 16 }}><LocationPicker onPicked={() => setPicking(false)} /></div>}
       {error && <div style={{ marginBottom: 12 }}><ErrorNote message={`Weather couldn't be loaded: ${error}`} onRetry={refresh} stale={stale} /></div>}
       {!data && loading && <div className="stack"><div className="skeleton" style={{ height: 190 }} /><div className="skeleton" style={{ height: 120 }} /><div className="skeleton" style={{ height: 220 }} /></div>}
       {!data && !loading && !error && <div className="card"><Empty title="No weather data for this location" /></div>}
 
       {data && c && d0 && (
         <div className="stack" style={{ gap: 16 }} key={s.location.name + s.tempUnit}>
-          <section className="card wx-hero">
+          <SkyBox sky={sky} className="mast">
+          <section className="wx-hero" style={{ minHeight: 280 }} aria-label="Current conditions">
             <div className="stack tight">
-              <span className="eyebrow">Now</span>
+              <span className="eyebrow">Now in {placeCity(s.location)}</span>
               <div className="row" style={{ alignItems: "flex-end", gap: 14 }}>
                 <span className="wx-temp tick" key={Math.round(c.temp)}>{Math.round(c.temp)}°</span>
                 <div style={{ paddingBottom: 6 }}>
@@ -206,8 +153,8 @@ export function WeatherPage() {
               </div>
               <p style={{ maxWidth: "56ch", marginTop: 6 }}>{summary}</p>
             </div>
-            <div style={{ color: "var(--c-reminder)" }}><WeatherIcon code={c.code} isDay={c.isDay} size={112} /></div>
           </section>
+          </SkyBox>
 
           <div className="tiles stagger">
             {data.air && (() => {
@@ -264,7 +211,7 @@ export function WeatherPage() {
 
           <section className="card">
             <div className="card-head">
-              <span className="card-title">Next 24 hours</span>
+              <h2 className="card-title">Next 24 hours</h2>
               <Seg value={metric} onChange={setMetric} label="Hourly chart" options={[{ value: "temp", label: "Temperature" }, { value: "rain", label: "Rain chance" }, { value: "wind", label: "Wind" }]} />
             </div>
             <div className="card-pad" style={{ paddingBottom: 4 }}><HourChart hours={hours} metric={metric} hour12={s.hour12} /></div>
@@ -285,7 +232,7 @@ export function WeatherPage() {
 
           <div className="cols2">
             <section className="card">
-              <div className="card-head"><span className="card-title">10-day forecast</span><span className="xs muted">click a day to open it</span></div>
+              <div className="card-head"><h2 className="card-title">10-day forecast</h2><span className="xs muted">click a day to open it</span></div>
               <div className="list">
                 {data.daily.slice(0, 10).map((d, i) => (
                   <button key={d.date} className="drow" onClick={() => ui.openDay(parseYmd(d.date))}>
@@ -302,12 +249,12 @@ export function WeatherPage() {
             </section>
             <div className="stack" style={{ gap: 16 }}>
               <section className="card">
-                <div className="card-head"><span className="card-title">Sun</span></div>
+                <div className="card-head"><h2 className="card-title">Sun</h2></div>
                 <div className="card-pad"><SunArc w={data} hour12={s.hour12} /></div>
               </section>
               {moon && (
                 <section className="card">
-                  <div className="card-head"><span className="card-title">Moon</span></div>
+                  <div className="card-head"><h2 className="card-title">Moon</h2></div>
                   <div className="card-pad row" style={{ gap: 18 }}>
                     <MoonDisc elongation={moon.elongation} size={74} />
                     <div><div className="display" style={{ fontSize: 20 }}>{moon.phaseName}</div><div className="muted">{(moon.illumination * 100).toFixed(0)}% illuminated</div></div>
@@ -316,7 +263,7 @@ export function WeatherPage() {
               )}
               {data.air && (
                 <section className="card">
-                  <div className="card-head"><span className="card-title">Air quality details</span><span className="badge">{aqiBand(data.air.aqi).label}</span></div>
+                  <div className="card-head"><h2 className="card-title">Air quality details</h2><span className="badge">{aqiBand(data.air.aqi).label}</span></div>
                   <div className="card-pad stack tight">
                     <p className="small">{aqiBand(data.air.aqi).advice}</p>
                     <dl className="kv">

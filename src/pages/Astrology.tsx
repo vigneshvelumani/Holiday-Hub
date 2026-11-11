@@ -1,13 +1,18 @@
 import { useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, MapPin } from "lucide-react";
 import { addDays, fmt, fmtLong, isValidYmd, parseYmd, relDays, today, ymd, WEEKDAYS } from "../lib/dates.ts";
-import { RASHI, fmtInZone, lunarObservances, moonEvents, panchangam, planetPositions } from "../lib/astro.ts";
+import { fmtInZone, lunarObservances, moonEvents, panchangam, planetPositions } from "../lib/astro.ts";
 import { useNow } from "../lib/clock.ts";
 import { holidaysForYear, regionsOf } from "../lib/holidays.ts";
 import { ZODIAC, ZODIAC_DATES, useHoroscope } from "../lib/services.ts";
 import { updateSettings, useSettings } from "../lib/store.ts";
 import { Empty, ErrorNote, MoonDisc, useUi } from "../components/ui.tsx";
-import { LocationPicker } from "./Weather.tsx";
+import { LunarCycle, ZodiacWheel } from "../components/Celestial.tsx";
+import { WeatherScene } from "../components/WeatherScene.tsx";
+import type { Scene } from "../lib/scene.ts";
+
+// the hero sits on a night sky whose Moon carries the day's real phase
+const NIGHT_SKY: Scene = { sky: "clear", night: true, intensity: 0, cloud: 0.06, wind: 0.08 };
 
 type Tab = "panchangam" | "planets" | "days" | "moon" | "horoscope";
 const TABS: { id: Tab; label: string }[] = [
@@ -28,7 +33,6 @@ export function AstrologyPage() {
   const now = useNow(60000);
   const [date, setDate] = useState(ymd(today()));
   const [tab, setTab] = useState<Tab>("panchangam");
-  const [showPlace, setShowPlace] = useState(false);
   const tz = s.location.tz;
   const t = (d: Date | null | undefined, day = false) => fmtInZone(d, tz, s.hour12, day);
   const span = (r: [Date, Date] | null) => (r ? `${t(r[0])} – ${t(r[1])}` : "—");
@@ -67,15 +71,15 @@ export function AstrologyPage() {
           <input className="input" style={{ width: 160 }} type="date" value={date} onChange={(e) => isValidYmd(e.target.value) && setDate(e.target.value)} aria-label="Date" />
           <button className="btn icon" aria-label="Next day" onClick={() => setDate(ymd(addDays(d, 1)))}><ChevronRight size={16} /></button>
           {date !== ymd(today()) && <button className="btn" onClick={() => setDate(ymd(today()))}>Today</button>}
-          <button className="btn" onClick={() => setShowPlace((v) => !v)} aria-expanded={showPlace}><MapPin size={14} /> Location</button>
+          <button className="btn" onClick={ui.openLocation}><MapPin size={14} /> {s.location.name.split(",")[0]}</button>
         </div>
       </div>
-      {showPlace && <div className="card card-pad" style={{ marginBottom: 16 }}><LocationPicker onPicked={() => setShowPlace(false)} /></div>}
       {calc.error && <ErrorNote message={`Panchangam couldn't be calculated for this date and place: ${calc.error}`} />}
 
       {p && (
-        <section className="card astro-hero" key={date}>
-          <MoonDisc elongation={p.moon.elongation} size={128} />
+        <WeatherScene scene={NIGHT_SKY} moonLit={p.moon.illumination} className="astro-sky" key={date}>
+        <section className="inner" aria-label="Moon and tithi">
+          <span className="moon-glow"><MoonDisc elongation={p.moon.elongation} size={132} dark /></span>
           <div className="stack tight">
             <span className="eyebrow">{p.tithi.paksha} Paksha · {p.tithi.paksha === "Shukla" ? "waxing" : "waning"} Moon · {(p.moon.illumination * 100).toFixed(0)}% lit</span>
             <h2 className="display tick" style={{ fontSize: 38, lineHeight: 1.05 }}>{p.tithi.name}</h2>
@@ -89,11 +93,12 @@ export function AstrologyPage() {
             <dt>Moonset</dt><dd className="num">{t(p.moonset)}</dd>
           </dl>
         </section>
+        </WeatherScene>
       )}
 
       {p && p.sunrise && p.sunset && (
         <section className="card" style={{ marginTop: 16 }} key={"bar" + date}>
-          <div className="card-head"><span className="card-title">The day at a glance</span><span className="xs muted">sunrise to sunset · traditional periods</span></div>
+          <div className="card-head"><h2 className="card-title">The day at a glance</h2><span className="xs muted">sunrise to sunset · traditional periods</span></div>
           <div className="card-pad stack">
             <div className="row between xs muted num"><span>{t(p.sunrise)} sunrise</span><span>sunset {t(p.sunset)}</span></div>
             <div className="daybar" role="img" aria-label={PERIODS.map((x) => `${x.label} ${span(p[x.key])}`).join(", ")}>
@@ -113,6 +118,13 @@ export function AstrologyPage() {
               ))}
             </div>
           </div>
+        </section>
+      )}
+
+      {p && (
+        <section className="card" style={{ marginTop: 16 }} aria-labelledby="h-cycle">
+          <div className="card-head"><h2 className="card-title" id="h-cycle">This lunar month</h2><span className="xs muted">{p.lunarMonth} · new moon to new moon · select a day</span></div>
+          <div className="card-pad"><LunarCycle dateKey={date} place={s.location} onPick={setDate} /></div>
         </section>
       )}
 
@@ -137,20 +149,10 @@ export function AstrologyPage() {
         )}
 
         {tab === "planets" && (
-          <div className="stack" style={{ gap: 16 }}>
+          <div className="cols2">
             <div className="card card-pad">
-              <div className="sec-title">Where the planets are — the 12 rashis</div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(118px, 1fr))", gap: 8 }} className="stagger">
-                {RASHI.map((r) => {
-                  const here = calc.planets.filter((x) => x.rashi === r);
-                  return (
-                    <div key={r} className="fact" style={here.length ? { borderColor: "var(--accent)", background: "var(--accent-soft)" } : { opacity: 0.6 }}>
-                      <div className="k">{r.split(" ")[0]} <span className="muted">{r.split(" ")[1]}</span></div>
-                      <div className="v" style={{ minHeight: 20 }}>{here.map((x) => x.name.split(" ")[0] + (x.retrograde && !x.name.includes("node") ? " ℞" : "")).join(", ") || "—"}</div>
-                    </div>
-                  );
-                })}
-              </div>
+              <div className="sec-title">Where the planets are — sidereal zodiac, at sunrise</div>
+              <ZodiacWheel planets={calc.planets} />
             </div>
             <div className="card" style={{ overflowX: "auto" }}>
               <table className="table">
@@ -172,7 +174,7 @@ export function AstrologyPage() {
         {tab === "days" && (
           <div className="cols2">
             <div className="card">
-              <div className="card-head"><span className="card-title">Auspicious &amp; observance days</span><span className="xs muted">next 45 days</span></div>
+              <div className="card-head"><h2 className="card-title">Auspicious &amp; observance days</h2><span className="xs muted">next 45 days</span></div>
               <div className="list anim">
                 {calc.obs.length === 0 && <Empty title="None in this period" />}
                 {calc.obs.map((o) => (
@@ -184,7 +186,7 @@ export function AstrologyPage() {
               </div>
             </div>
             <div className="card">
-              <div className="card-head"><span className="card-title">Festival dates</span><span className="xs muted">calculated for each year</span></div>
+              <div className="card-head"><h2 className="card-title">Festival dates</h2><span className="xs muted">calculated for each year</span></div>
               <div className="list anim">
                 {festivals.map((f) => (
                   <button key={f.id} className="list-row click" style={{ border: 0, background: "none", width: "100%", textAlign: "left" }} onClick={() => ui.openDay(parseYmd(f.date))}>

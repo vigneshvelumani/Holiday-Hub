@@ -12,6 +12,11 @@ Same stack as the original (Vite + React + TypeScript).
 - **News** — live headlines by category, refreshed automatically every 10 minutes, read in a side panel.
 - **Holidays**, **Astrology & Panchangam**, **Tasks**, **Reminders**, **Settings**.
 
+Phase 2 added an animated sky driven by live weather, analog world clocks, a
+location dialog that never trusts an implausible position, an in-app news reader
+with bookmarks, and an accessibility pass. The audit and test record is in
+[docs/AUDIT.md](docs/AUDIT.md).
+
 Content updates itself: the clock ticks every second, the date rolls over at midnight, weather re-checks every 5 minutes (new data every 15) and news every 10.
 
 ```bash

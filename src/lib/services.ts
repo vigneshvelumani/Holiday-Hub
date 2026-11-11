@@ -159,44 +159,6 @@ export async function fetchWeather(place: Place, unit: "C" | "F"): Promise<Weath
   return w;
 }
 
-export async function searchPlaces(query: string): Promise<Place[]> {
-  const j = await getJson<any>(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=8&language=en&format=json`);
-  return (j.results || []).map((r: any) => ({
-    name: [r.name, r.admin1, r.country].filter(Boolean).join(", "),
-    lat: r.latitude,
-    lon: r.longitude,
-    tz: r.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
-  }));
-}
-
-/** Coordinates → a named place with the time zone that actually applies there. */
-export async function resolvePlace(lat: number, lon: number): Promise<Place> {
-  const [geo, zone] = await Promise.all([
-    getJson<any>(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`).catch(() => null),
-    getJson<any>(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m&timezone=auto`).catch(() => null),
-  ]);
-  const parts = geo ? [geo.locality || geo.city, geo.city && geo.city !== geo.locality ? geo.city : "", geo.principalSubdivision, geo.countryName] : [];
-  const name = [...new Set(parts.filter(Boolean))].join(", ");
-  return {
-    name: name || `${Math.abs(lat).toFixed(2)}°${lat >= 0 ? "N" : "S"}, ${Math.abs(lon).toFixed(2)}°${lon >= 0 ? "E" : "W"}`,
-    lat,
-    lon,
-    tz: zone?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
-  };
-}
-
-/** Browser geolocation → a named Place. */
-export function locateMe(): Promise<Place> {
-  return new Promise((resolve, reject) => {
-    if (!navigator.geolocation) return reject(new Error("This browser does not support location."));
-    navigator.geolocation.getCurrentPosition(
-      (pos) => resolvePlace(+pos.coords.latitude.toFixed(4), +pos.coords.longitude.toFixed(4)).then(resolve, reject),
-      (err) => reject(new Error(err.code === 1 ? "Location permission was denied." : "Could not determine your location.")),
-      { timeout: 12000, maximumAge: 600000 },
-    );
-  });
-}
-
 export interface Loadable<T> {
   data: T | null;
   loading: boolean;
@@ -254,35 +216,69 @@ export function useWeather(s: Settings): Loadable<Weather> {
 }
 
 // ── News ─────────────────────────────────────────────────────────────────────
+// Publisher RSS feeds (The Hindu, BBC News, The New York Times) supply headline,
+// excerpt, image, author and time; Google News supplies search and story clusters.
+// Feeds carry excerpts, not whole articles: the reader shows everything the feed
+// provides and links to the publisher for the rest. Nothing is scraped.
 export interface NewsItem {
+  /** stable id derived from the link */
+  id: string;
   title: string;
   link: string;
   source: string;
   pubDate: string | null;
+  /** the feed's excerpt */
   summary: string;
+  /** paragraphs, only when the feed itself includes article text */
+  content?: string[];
+  image?: string;
+  author?: string;
   tag?: string;
+  category: string;
   /** other publishers covering the same story */
   related: { title: string; source: string; link: string }[];
 }
 
 const G = "https://news.google.com/rss";
-export const NEWS_CATEGORIES: { id: string; label: string; feed: string | null }[] = [
-  { id: "top", label: "Top stories", feed: null }, // the original site's feed (world / tech / IT / HN)
-  { id: "india", label: "India", feed: `${G}?hl=en-IN&gl=IN&ceid=IN:en` },
-  { id: "tamilnadu", label: "Tamil Nadu", feed: `${G}/search?q=%22Tamil+Nadu%22+when:3d&hl=en-IN&gl=IN&ceid=IN:en` },
-  { id: "world", label: "International", feed: `${G}/headlines/section/topic/WORLD?hl=en-IN&gl=IN&ceid=IN:en` },
-  { id: "us", label: "United States", feed: `${G}?hl=en-US&gl=US&ceid=US:en` },
-  { id: "technology", label: "Technology", feed: `${G}/headlines/section/topic/TECHNOLOGY?hl=en-IN&gl=IN&ceid=IN:en` },
-  { id: "business", label: "Business", feed: `${G}/headlines/section/topic/BUSINESS?hl=en-IN&gl=IN&ceid=IN:en` },
-  { id: "science", label: "Science", feed: `${G}/headlines/section/topic/SCIENCE?hl=en-IN&gl=IN&ceid=IN:en` },
-  { id: "sports", label: "Sports", feed: `${G}/headlines/section/topic/SPORTS?hl=en-IN&gl=IN&ceid=IN:en` },
-  { id: "events", label: "World events", feed: `${G}/search?q=(summit+OR+election+OR+%22United+Nations%22+OR+G20+OR+COP)+when:7d&hl=en-US&gl=US&ceid=US:en` },
+const TH = "https://www.thehindu.com";
+const BBC = "https://feeds.bbci.co.uk";
+const NYT = "https://rss.nytimes.com/services/xml/rss/nyt";
+export const NEWS_CATEGORIES: { id: string; label: string; feeds: string[] }[] = [
+  { id: "india", label: "India", feeds: [`${TH}/news/national/feeder/default.rss`] },
+  { id: "tamilnadu", label: "Tamil Nadu", feeds: [`${TH}/news/national/tamil-nadu/feeder/default.rss`] },
+  { id: "world", label: "International", feeds: [`${BBC}/news/world/rss.xml`, `${TH}/news/international/feeder/default.rss`] },
+  { id: "us", label: "United States", feeds: [`${NYT}/US.xml`, `${BBC}/news/world/us_and_canada/rss.xml`] },
+  { id: "technology", label: "Technology", feeds: [`${BBC}/news/technology/rss.xml`, `${TH}/sci-tech/technology/feeder/default.rss`] },
+  { id: "business", label: "Business", feeds: [`${TH}/business/feeder/default.rss`, `${BBC}/news/business/rss.xml`] },
+  { id: "science", label: "Science", feeds: [`${BBC}/news/science_and_environment/rss.xml`, `${TH}/sci-tech/science/feeder/default.rss`] },
+  { id: "sports", label: "Sports", feeds: [`${TH}/sport/feeder/default.rss`, `${BBC}/sport/rss.xml`] },
+  { id: "entertainment", label: "Entertainment", feeds: [`${TH}/entertainment/feeder/default.rss`, `${BBC}/news/entertainment_and_arts/rss.xml`] },
+  { id: "events", label: "World events", feeds: [`${G}/search?q=(summit+OR+election+OR+%22United+Nations%22+OR+G20+OR+COP)+when:7d&hl=en-US&gl=US&ceid=US:en`] },
+  { id: "trending", label: "Trending", feeds: [`${G}?hl=en-IN&gl=IN&ceid=IN:en`] },
+  { id: "top", label: "Tech wire", feeds: [] }, // the original site's feed (world / tech / IT / HN)
 ];
+export const newsCategory = (id: string) => NEWS_CATEGORIES.find((c) => c.id === id);
 export const newsSearchFeed = (q: string) => `${G}/search?q=${encodeURIComponent(q)}&hl=en-IN&gl=IN&ceid=IN:en`;
 
-/** Feed descriptions are either plain text or (Google News) a list of related coverage. */
-function readDescription(html: string, title: string): { summary: string; related: NewsItem["related"] } {
+const PUBLISHER: Record<string, string> = { "www.thehindu.com": "The Hindu", "feeds.bbci.co.uk": "BBC News", "rss.nytimes.com": "The New York Times" };
+const hostOf = (u: string) => {
+  try {
+    return new URL(u).hostname;
+  } catch {
+    return "";
+  }
+};
+function idOf(link: string): string {
+  let h = 5381;
+  for (let i = 0; i < link.length; i++) h = ((h << 5) + h + link.charCodeAt(i)) >>> 0;
+  return h.toString(36);
+}
+const httpsImage = (u: string | null | undefined) => (u && /^https:\/\//.test(u) ? u : undefined);
+
+/** Feed descriptions are plain text, HTML, or (Google News) a list of related coverage. */
+function readDescription(html: string, title: string): { summary: string; related: NewsItem["related"]; image?: string } {
   const doc = new DOMParser().parseFromString(html, "text/html");
+  const image = httpsImage(doc.querySelector("img")?.getAttribute("src"));
   const lis = [...doc.querySelectorAll("li")];
   if (lis.length) {
     const related = lis
@@ -291,12 +287,20 @@ function readDescription(html: string, title: string): { summary: string; relate
         return { title: a?.textContent?.trim() || "", link: a?.getAttribute("href") || "", source: li.querySelector("font")?.textContent?.trim() || "" };
       })
       .filter((r) => r.title && /^https?:\/\//.test(r.link) && !title.startsWith(r.title));
-    return { summary: "", related: related.slice(0, 6) };
+    return { summary: "", related: related.slice(0, 6), image };
   }
   const only = doc.querySelector("a");
   const text = (doc.body.textContent || "").replace(/\s+/g, " ").trim();
   // a lone link repeating the headline is not a summary
-  return { summary: only && text.startsWith(only.textContent?.trim() || "\u0000") ? "" : text, related: [] };
+  return { summary: only && text.startsWith(only.textContent?.trim() || "\u0000") ? "" : text, related: [], image };
+}
+
+/** Article text, only if the feed ships it (content:encoded). */
+function readContent(html: string, summary: string): string[] | undefined {
+  if (!html) return undefined;
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const paras = [...doc.querySelectorAll("p")].map((p) => (p.textContent || "").replace(/\s+/g, " ").trim()).filter((t) => t.length > 40);
+  return paras.join(" ").length > summary.length * 1.5 + 200 ? paras : undefined;
 }
 
 function splitSource(title: string, source: string): { title: string; source: string } {
@@ -306,84 +310,112 @@ function splitSource(title: string, source: string): { title: string; source: st
   return { title, source };
 }
 
-function tidy(items: NewsItem[]): NewsItem[] {
-  const seen = new Set<string>();
-  return items
-    .filter((i) => i.title && /^https?:\/\//.test(i.link) && !seen.has(i.title) && seen.add(i.title))
-    .map((i) => {
-      const summary = i.summary.startsWith(i.title) ? i.summary.slice(i.title.length).replace(/^[\s\-–|]+/, "") : i.summary;
-      return { ...i, summary: summary === i.source ? "" : summary.slice(0, 600) };
-    });
-}
+type Raw = Omit<NewsItem, "id" | "category">;
 
-async function rssDirect(feed: string): Promise<NewsItem[]> {
+async function rssDirect(feed: string): Promise<Raw[]> {
   const r = await fetch(`/api/rss?url=${encodeURIComponent(feed)}`);
   const type = r.headers.get("content-type") || "";
   if (!r.ok || !type.includes("xml")) throw new Error("relay unavailable");
   const xml = new DOMParser().parseFromString(await r.text(), "application/xml");
   if (xml.querySelector("parsererror")) throw new Error("bad feed");
+  const publisher = PUBLISHER[hostOf(feed)] || "";
   return [...xml.querySelectorAll("item")].map((it) => {
-    const text = (sel: string) => it.querySelector(sel)?.textContent?.trim() || "";
-    const s = splitSource(text("title"), text("source"));
-    return { title: s.title, source: s.source, link: text("link"), pubDate: text("pubDate") || null, ...readDescription(text("description"), text("title")) };
+    const text = (tag: string) => it.getElementsByTagName(tag)[0]?.textContent?.trim() || "";
+    const attr = (tag: string, name: string) => it.getElementsByTagName(tag)[0]?.getAttribute(name);
+    const s = splitSource(text("title"), text("source") || publisher);
+    const d = readDescription(text("description"), text("title"));
+    return {
+      title: s.title, source: s.source, link: text("link"), pubDate: text("pubDate") || null, summary: d.summary, related: d.related,
+      image: httpsImage(attr("media:content", "url")) || httpsImage(attr("media:thumbnail", "url")) || httpsImage(attr("enclosure", "url")) || d.image,
+      author: text("dc:creator") || text("author") || undefined, content: readContent(text("content:encoded"), d.summary),
+    };
   });
 }
 
-async function rssViaService(feed: string): Promise<NewsItem[]> {
+async function rssViaService(feed: string): Promise<Raw[]> {
   const j = await getJson<any>(`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(feed)}`);
   if (j.status !== "ok") throw new Error(j.message || "The news feed could not be read.");
+  const publisher = PUBLISHER[hostOf(feed)] || "";
   return (j.items || []).map((it: any) => {
-    const s = splitSource(String(it.title || ""), String(it.author || ""));
+    const fromGoogle = hostOf(feed) === "news.google.com";
+    const s = splitSource(String(it.title || ""), fromGoogle ? String(it.author || "") : publisher);
+    const d = readDescription(String(it.description || ""), String(it.title || ""));
     // rss2json reports times in UTC without a zone marker
     const pub = it.pubDate ? String(it.pubDate).replace(" ", "T") + "Z" : null;
-    return { title: s.title, source: s.source, link: String(it.link || ""), pubDate: pub, ...readDescription(String(it.description || ""), String(it.title || "")) };
+    return {
+      title: s.title, source: s.source, link: String(it.link || ""), pubDate: pub, summary: d.summary, related: d.related,
+      image: httpsImage(it.thumbnail) || httpsImage(it.enclosure?.link) || d.image, author: !fromGoogle && it.author ? String(it.author) : undefined,
+      content: readContent(String(it.content || ""), d.summary),
+    };
   });
 }
 
-async function originalFeed(): Promise<NewsItem[]> {
+async function originalFeed(): Promise<Raw[]> {
   const j = await getJson<any>(`${FEED_BASE}/news-feed`, { headers: { Authorization: `Bearer ${FEED_KEY}` } }, 25000);
   const tags: Record<string, string> = { world: "World", tech: "Tech", it: "IT", hn: "HN" };
-  return (j.items || []).map((it: any) => ({
-    title: String(it.title || ""), link: String(it.link || ""), source: String(it.source || ""), pubDate: it.pubDate || null,
-    ...readDescription(String(it.description || it.summary || ""), String(it.title || "")), tag: tags[it.category] || it.category,
-  }));
+  return (j.items || []).map((it: any) => {
+    const d = readDescription(String(it.description || it.summary || ""), String(it.title || ""));
+    return { title: String(it.title || ""), link: String(it.link || ""), source: String(it.source || ""), pubDate: it.pubDate || null, summary: d.summary, related: d.related, image: d.image, tag: tags[it.category] || it.category };
+  });
+}
+
+async function readFeed(feed: string): Promise<Raw[]> {
+  try {
+    return await rssDirect(feed);
+  } catch {
+    return rssViaService(feed);
+  }
+}
+
+// every article seen this session, so the reader can open one by id
+const articles = new Map<string, NewsItem>();
+export const getArticle = (id: string) => articles.get(id);
+export function rememberArticles(items: NewsItem[]) {
+  for (const i of items) articles.set(i.id, i);
 }
 
 const NEWS_TTL = 8 * 60000;
 const NEWS_REFRESH = 10 * 60000;
-export async function fetchNews(id: string, feed: string | null, force = false): Promise<NewsItem[]> {
-  const key = "almanac.news2:" + id;
+export async function fetchNews(id: string, feeds: string[], force = false): Promise<NewsItem[]> {
+  const key = "almanac.news3:" + id;
   const c = cacheGet<NewsItem[]>(key, NEWS_TTL);
-  if (c?.fresh && !force) return c.value;
-  let items: NewsItem[];
-  if (!feed) items = await originalFeed();
+  if (c?.fresh && !force) return rememberArticles(c.value), c.value;
+  let raw: Raw[];
+  if (!feeds.length) raw = await originalFeed();
   else {
-    try {
-      items = await rssDirect(feed);
-    } catch {
-      items = await rssViaService(feed);
-    }
+    const got = await Promise.allSettled(feeds.map(readFeed));
+    const ok = got.filter((g): g is PromiseFulfilledResult<Raw[]> => g.status === "fulfilled");
+    if (!ok.length) throw new Error((got[0] as PromiseRejectedResult).reason?.message || "The news feeds could not be reached.");
+    raw = ok.flatMap((g) => g.value);
   }
-  items = tidy(items).sort((a, b) => (Date.parse(b.pubDate || "") || 0) - (Date.parse(a.pubDate || "") || 0));
-  if (!id.startsWith("search:")) cacheSet(key, items);
+  const seen = new Set<string>();
+  const items: NewsItem[] = raw
+    .filter((i) => i.title && /^https?:\/\//.test(i.link) && !seen.has(i.title) && seen.add(i.title))
+    .map((i) => ({ ...i, id: idOf(i.link), category: id.startsWith("search:") ? "search" : id, summary: (i.summary.startsWith(i.title) ? i.summary.slice(i.title.length).replace(/^[\s\-–|]+/, "") : i.summary).slice(0, 900) }))
+    .sort((a, b) => (id === "trending" ? b.related.length - a.related.length : 0) || (Date.parse(b.pubDate || "") || 0) - (Date.parse(a.pubDate || "") || 0));
+  rememberArticles(items);
+  if (!id.startsWith("search:")) cacheSet(key, items.slice(0, 60));
   return items;
 }
 
-/** Headlines for a feed. Refreshes itself every 10 minutes and whenever the tab is reopened. */
-export function useNews(id: string, feed: string | null): Loadable<NewsItem[]> {
+/** Headlines for a category. Refreshes itself every 10 minutes and whenever the tab is reopened. */
+export function useNews(id: string, feeds: string[]): Loadable<NewsItem[]> {
   const [state, setState] = useState<Omit<Loadable<NewsItem[]>, "refresh">>({ data: null, loading: true, error: null, stale: false });
   const live = useRef(true);
   const current = useRef(id);
   current.current = id;
+  const feedKey = feeds.join("|");
   const load = useCallback(
     (force: boolean, quiet: boolean) => {
-      const saved = cacheGet<NewsItem[]>("almanac.news2:" + id, NEWS_TTL);
+      const saved = cacheGet<NewsItem[]>("almanac.news3:" + id, NEWS_TTL);
+      if (saved) rememberArticles(saved.value);
       setState((p) => (quiet && p.data ? { ...p, loading: true } : { data: saved?.value ?? null, loading: true, error: null, stale: false, updatedAt: saved?.at }));
-      fetchNews(id, feed, force)
+      fetchNews(id, feeds, force)
         .then((items) => live.current && current.current === id && setState({ data: items, loading: false, error: null, stale: false, updatedAt: Date.now() }))
         .catch((e: Error) => live.current && current.current === id && setState((p) => ({ data: p.data ?? saved?.value ?? null, loading: false, error: e.message || "Couldn't load news.", stale: !!(p.data ?? saved), updatedAt: p.updatedAt })));
     },
-    [id, feed],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [id, feedKey],
   );
   useEffect(() => {
     live.current = true;

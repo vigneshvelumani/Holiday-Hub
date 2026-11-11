@@ -5,7 +5,7 @@ import react from "@vitejs/plugin-react";
 // Browsers cannot read most RSS feeds directly (no CORS headers), so the app asks
 // this endpoint first and falls back to a public RSS→JSON service on static hosting.
 // Only the hosts below can be fetched — it is not an open proxy.
-const RSS_HOSTS = new Set(["news.google.com"]);
+const RSS_HOSTS = new Set(["news.google.com", "www.thehindu.com", "feeds.bbci.co.uk", "rss.nytimes.com"]);
 
 function rssRelay(): Plugin {
   const handler = async (req: any, res: any) => {
