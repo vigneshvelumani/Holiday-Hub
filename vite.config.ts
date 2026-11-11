@@ -37,6 +37,8 @@ function rssRelay(): Plugin {
 }
 
 export default defineConfig({
+  // relative asset paths, so the build works at a domain root and under a sub-path (GitHub Pages)
+  base: "./",
   plugins: [react(), rssRelay()],
   server: { port: 5173 },
 });

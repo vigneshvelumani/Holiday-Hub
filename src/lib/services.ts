@@ -313,7 +313,7 @@ function splitSource(title: string, source: string): { title: string; source: st
 type Raw = Omit<NewsItem, "id" | "category">;
 
 async function rssDirect(feed: string): Promise<Raw[]> {
-  const r = await fetch(`/api/rss?url=${encodeURIComponent(feed)}`);
+  const r = await fetch(`${import.meta.env.BASE_URL}api/rss?url=${encodeURIComponent(feed)}`);
   const type = r.headers.get("content-type") || "";
   if (!r.ok || !type.includes("xml")) throw new Error("relay unavailable");
   const xml = new DOMParser().parseFromString(await r.text(), "application/xml");
