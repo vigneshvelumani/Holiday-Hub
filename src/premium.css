@@ -530,3 +530,16 @@ main#main { position: relative; z-index: 1; }
   .cal-bar h2 { flex: 1; }
   .cal-card .cell { min-height: 72px; }
 }
+@media (max-width: 900px) {
+  /* five equal tabs that can never push the page wider than the screen */
+  .bottom-nav { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .bottom-nav button { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 11px; }
+}
+/* the dashboard's news tabs scroll inside the card instead of widening the page */
+.panel .tabs2 { min-width: 0; margin-left: 0; margin-right: 0; padding-left: 0; padding-right: 0; }
+/* phones: one column of panels (this must follow the two-column rule above) */
+@media (max-width: 900px) {
+  .dash-b { grid-template-columns: minmax(0, 1fr); }
+}
+.pan-rows li { flex-wrap: wrap; }
+.panel { overflow-wrap: anywhere; }

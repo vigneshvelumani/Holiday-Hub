@@ -8,7 +8,7 @@ Date: 11 November 2026 · Branch: `premium-redesign` · Issue IDs refer to `docs
 |---|---|
 | `npx tsc --noEmit` | clean |
 | `npm test` | 98 engine + 21 phase-2 + 19 time-tool + 4 feed checks, 0 failed, 0 warnings |
-| `npm run build` | succeeds; main bundle 427 kB (140 kB gzip), five lazy page chunks |
+| `npm run build` | succeeds; main bundle 445 kB (144 kB gzip), five lazy page chunks |
 | `npx playwright test` (production build, local Chrome, clock pinned to 11 Nov 2026 10:00 IST) | 27 passed, 0 failed, 0 skipped |
 | Contrast, 23 token pairs × 2 themes | minimum 4.94 (light), 5.89 (dark); none below 4.5 |
 | Horizontal overflow, 10 pages × 375 / 768 / 1280 / 1920 px | none |
@@ -53,13 +53,40 @@ cell, Saturday chips at the foot of the cell (icon + words; short "Work" / "Off"
 Other touched files: `index.html`, `src/main.tsx`, `src/pages/Main.tsx`, `src/components/DayModal.tsx`,
 `package.json`, `.gitignore`.
 
+## Secondary pages (second pass)
+
+All remaining pages were recomposed, each in its own stylesheet under `src/pages/`:
+
+- **Holidays** — next-holiday hero with a live countdown, "after that" list, one filter toolbar, a
+  month-by-month timeline with a today divider and long-weekend hints computed from the Saturday
+  rule, and a per-region side column.
+- **Tasks / Reminders** — summary numbers that act as filters, lists grouped by time (Overdue, Today,
+  Tomorrow, This week, Later), priority as icon + word, filters behind one disclosure on phones, and a
+  single notification-status panel that keeps the "only while the site is open" wording.
+- **Weather** — tall sky hero, 24-hour curve with temperature / rain / wind overlays, 10-day list with
+  range bars on one shared scale, Sun & Moon, air-quality scale, and a conditions sheet with a wind
+  compass.
+- **News** — editorial front page (lead, rail, "Latest", varied sections), arrow-key category tabs,
+  bookmark toggles on every story; reader with a sticky bar, serif body and a publisher panel.
+- **Astrology** — night-sky hero for the selected date, the five limbs with plain meanings, a
+  sunrise-to-sunset timeline with Rahu Kalam, Yamagandam, Kuligai and Abhijit, keyboard-selectable
+  lunar month, planet wheel with a table, and the third-party horoscope set apart.
+- **Settings** — titled sections with a sticky section list; no setting added or removed.
+
+Checked for this pass: type-check, all unit checks, production build, and the 27 browser tests
+(which cover every page for one `h1`, named controls, labelled inputs and no overflow at four
+widths). Each page was also looked at in a browser at 1440 px and 375 px in both themes.
+A bug found in this pass and fixed: the dashboard's lower panels were laid out in two columns on
+phones.
+
+Not checked for these pages: widths above 1440 px, error and loading states of Weather (code review
+only), the news reader's full-text path, a real screen reader, measured contrast of the new
+page-specific colour pairs.
+
 ## Decisions that differ from the brief
 
 - **No GSAP, Motion or Three.js.** Motion is CSS plus the existing 2D canvas sky. Adding a library
   would not change what the user sees here and would add weight to a daily-use page.
-- **Secondary pages were re-skinned, not recomposed.** Holidays, Tasks, Reminders, Weather, News,
-  Astrology and Settings take the new tokens, type, controls and header; their layouts are those of
-  phase 2. The dashboard, shell and month calendar were redesigned from scratch.
 - **The header sky shows the real weather.** On an overcast day it is grey, not a sunset.
 - **News text.** Feeds provide headline, image, author and excerpt. The reader shows those and links
   to the publisher; nothing is scraped.
