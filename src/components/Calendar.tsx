@@ -444,6 +444,7 @@ export function CalendarPage() {
 
   return (
     <div className="page">
+      <h1 className="sr">Calendar</h1>
       <div className="cal-toolbar">
         <div className="row">
           <button className="btn icon" onClick={() => step(-1)} aria-label="Previous" disabled={view === "upcoming"}><ChevronLeft size={16} /></button>

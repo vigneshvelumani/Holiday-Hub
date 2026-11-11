@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bell, CalendarDays, CheckCheck, CloudSun, Flag, Globe2, LayoutDashboard, ListTodo, Menu, Moon, MoonStar, Newspaper, PanelLeftClose, PanelLeftOpen, Plus, Search, Settings as SettingsIcon, Sun, Trash2, X,
 } from "lucide-react";
@@ -11,11 +11,19 @@ import { DayModal } from "./components/DayModal.tsx";
 import { LOCAL_TZ, fmtZone, tzName, useNow, useTodayKey } from "./lib/clock.ts";
 import { resolvePlace } from "./lib/location.ts";
 import { LocationChip, LocationDialog } from "./components/Location.tsx";
-import { WorldClockPage } from "./pages/World.tsx";
+import { SkyBox } from "./components/SkyBox.tsx";
+import { useSky } from "./lib/sky.ts";
 import { BirthdaysModal, EventForm, ReminderForm, TaskForm } from "./components/Forms.tsx";
 import { UiContext, tone, useUi as useContextUi, type Route, type Ui } from "./components/ui.tsx";
 import { Dashboard, HolidaysPage, RemindersPage, TasksPage, timeAgo } from "./pages/Main.tsx";
-import { AstrologyPage, NewsPage, SettingsPage, WeatherPage } from "./pages/Info.tsx";
+
+// the secondary pages load on demand, so the first paint only carries the dashboard and calendar
+const WorldClockPage = lazy(() => import("./pages/World.tsx").then((m) => ({ default: m.WorldClockPage })));
+const WeatherPage = lazy(() => import("./pages/Weather.tsx").then((m) => ({ default: m.WeatherPage })));
+const NewsPage = lazy(() => import("./pages/News.tsx").then((m) => ({ default: m.NewsPage })));
+const AstrologyPage = lazy(() => import("./pages/Astrology.tsx").then((m) => ({ default: m.AstrologyPage })));
+const SettingsPage = lazy(() => import("./pages/Info.tsx").then((m) => ({ default: m.SettingsPage })));
+const PageSkeleton = () => <div className="page" role="status" aria-label="Loading"><div className="skeleton" style={{ height: 120 }} /><div className="skeleton" style={{ height: 320, marginTop: 16 }} /></div>;
 
 const NAV: { id: Route; label: string; icon: typeof Bell; group: string }[] = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, group: "Plan" },
@@ -48,7 +56,7 @@ function useTheme(theme: "system" | "light" | "dark") {
     const apply = () => {
       const dark = theme === "dark" || (theme === "system" && mq.matches);
       document.documentElement.dataset.theme = dark ? "dark" : "light";
-      document.querySelector('meta[name="theme-color"]')?.setAttribute("content", dark ? "#121413" : "#f6f5f1");
+      document.querySelector('meta[name="theme-color"]')?.setAttribute("content", "#121831");
     };
     apply();
     mq.addEventListener("change", apply);
@@ -66,6 +74,14 @@ export default function App() {
   const [more, setMore] = useState(false);
   const [day, setDay] = useState<Date | null>(null);
   const [locOpen, setLocOpen] = useState<false | "welcome" | "manual">(false);
+  const [scrolled, setScrolled] = useState(false);
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 8);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+  const dark = document.documentElement.dataset.theme === "dark";
   // first visit: ask where the visitor is instead of silently assuming a city
   useEffect(() => {
     if (data.ready && !s.locationPrompted) setLocOpen("welcome");
@@ -136,7 +152,7 @@ export default function App() {
         <nav className="sidebar" aria-label="Main">
           <div className="brand">
             <span className="row" style={{ gap: 10, minWidth: 0 }}>
-              <span className="brand-mark" aria-hidden>HH</span>
+              <BrandMark />
               <span className="brand-name">Holiday Hub</span>
             </span>
             <button className="btn ghost icon sm" onClick={() => updateSettings({ sidebarCollapsed: !s.sidebarCollapsed })} aria-label={s.sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"} aria-expanded={!s.sidebarCollapsed} title={s.sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}>
@@ -147,35 +163,43 @@ export default function App() {
             <Fragment key={n.id}>
               {(i === 0 || NAV[i - 1].group !== n.group) && <div className="nav-group">{n.group}</div>}
               <button className="nav-item" aria-current={route === n.id ? "page" : undefined} onClick={() => go(n.id)} title={s.sidebarCollapsed ? n.label : undefined} aria-label={n.label}>
-                <n.icon size={17} strokeWidth={1.75} /> <span className="nav-label">{n.label}</span>
+                <n.icon size={20} strokeWidth={1.9} /> <span className="nav-label">{n.label}</span>
                 {n.id === "tasks" && openTasks > 0 && <span className="count num">{openTasks}</span>}
               </button>
             </Fragment>
           ))}
-          <div className="sidebar-foot">No sign-in needed. Everything you add stays in this browser.</div>
+          <div className="sidebar-foot">
+            <span className="sidebar-note">No sign-in. Everything you add stays in this browser.</span>
+            <div className="theme-switch" role="group" aria-label="Colour theme">
+              <button type="button" aria-pressed={!dark} aria-label="Light theme" onClick={() => updateSettings({ theme: "light" })}><Sun size={15} /> <span>Light</span></button>
+              <button type="button" aria-pressed={dark} aria-label="Dark theme" onClick={() => updateSettings({ theme: "dark" })}><Moon size={15} /> <span>Dark</span></button>
+            </div>
+          </div>
         </nav>
 
-        <div className="main">
-          <header className="topbar" role="banner">
+        <div className={"main" + (route === "dashboard" ? " tall" : "")}>
+          <Horizon />
+          <header className={"topbar" + (scrolled ? " scrolled" : "")} role="banner">
             <span className="brand only-sm" style={{ padding: 0 }}>
-              <span className="brand-mark" aria-hidden>HH</span>
+              <BrandMark />
             </span>
             <GlobalSearch />
             <div className="grow hide-sm" />
             <span className="hide-sm"><LocationChip onOpen={() => setLocOpen("manual")} /></span>
             <ClockChip hour12={s.hour12} onClick={() => go("world")} />
             <NewMenu date={newDate} />
-            <button className="btn ghost icon" aria-label={`Switch to ${document.documentElement.dataset.theme === "dark" ? "light" : "dark"} theme`} title="Toggle theme" onClick={() => updateSettings({ theme: document.documentElement.dataset.theme === "dark" ? "light" : "dark" })}>
-              {document.documentElement.dataset.theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+            <button className="btn ghost icon only-sm" aria-label={`Switch to ${dark ? "light" : "dark"} theme`} onClick={() => updateSettings({ theme: dark ? "light" : "dark" })}>
+              {dark ? <Sun size={18} /> : <Moon size={18} />}
             </button>
             <NotificationCentre />
+            <button className="btn ghost icon hide-sm" aria-label="Settings" aria-current={route === "settings" ? "page" : undefined} onClick={() => go("settings")}><SettingsIcon size={18} /></button>
           </header>
           {data.backend === "memory" && (
             <div className="notice err" style={{ margin: "12px 24px 0" }} role="alert">
               This browser is blocking local storage (this often happens in private browsing), so anything you add will be lost when the tab closes.
             </div>
           )}
-          <main id="main" tabIndex={-1} style={{ outline: "none" }}>{data.ready ? <Page /> : <div className="page"><div className="skeleton" style={{ height: 120 }} /><div className="skeleton" style={{ height: 320, marginTop: 16 }} /></div>}</main>
+          <main id="main" tabIndex={-1} style={{ outline: "none" }}>{data.ready ? <Suspense fallback={<PageSkeleton />}><Page /></Suspense> : <PageSkeleton />}</main>
         </div>
 
         <nav className="bottom-nav" aria-label="Main">
@@ -210,6 +234,36 @@ export default function App() {
       {locOpen && <LocationDialog welcome={locOpen === "welcome"} onClose={() => setLocOpen(false)} />}
       <Toasts />
     </UiContext.Provider>
+  );
+}
+
+/** The brand mark: a calendar leaf with the alternating-Saturday tick. */
+function BrandMark() {
+  return (
+    <span className="brand-mark" aria-hidden>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3.5" y="5" width="17" height="15.5" rx="3.5" />
+        <path d="M8 3v4M16 3v4M3.5 10h17" />
+        <path d="m9 15 2.2 2.2L15.5 13" />
+      </svg>
+    </span>
+  );
+}
+
+/** The sky over the active location (from live weather) with a ridge line — the backdrop behind the header. */
+function Horizon() {
+  const s = useSettings();
+  const sky = useSky(s);
+  return (
+    <div aria-hidden>
+      <SkyBox sky={sky} className="horizon">
+        <svg className="ridges" viewBox="0 0 1200 200" preserveAspectRatio="none">
+          <path className="r1" d="M0 120 80 96l70 16 90-42 90 34 90-44 80 38 100-24 90 36 90-44 100 34 80-20 100 28 80-24 60 16v100H0Z" />
+          <path className="r2" d="M0 150l90-22 80 18 90-34 90 28 100-36 90 34 100-20 100 28 90-36 100 30 90-18 90 22 90-20v76H0Z" />
+          <path className="r3" d="M0 176l120-16 100 12 110-22 120 20 110-16 120 18 120-20 110 18 120-14 100 14 70-10v40H0Z" />
+        </svg>
+      </SkyBox>
+    </div>
   );
 }
 
@@ -252,12 +306,12 @@ function GlobalSearch() {
   };
   return (
     <div className="search" ref={ref}>
-      <Search size={15} />
+      <Search size={17} />
       <input
         ref={inputRef}
         className="input"
         value={q}
-        placeholder="Search tasks, events, holidays, notes — or type a date"
+        placeholder="Search holidays, tasks, events, notes or a date"
         aria-label="Global search"
         role="combobox"
         aria-expanded={open && q.trim().length >= 2}
@@ -271,6 +325,7 @@ function GlobalSearch() {
           else if (e.key === "Escape") (setOpen(false), inputRef.current?.blur());
         }}
       />
+      {!q && <span className="kbd" aria-hidden>/</span>}
       {open && q.trim().length >= 2 && (
         <div className="pop search-results" id="search-results" role="listbox">
           {hits.length === 0 && <div className="empty"><strong>No matches</strong>Try a holiday name, a task, or a date like “14 Nov 2026” or “March 2030”.</div>}
@@ -298,10 +353,10 @@ function NewMenu({ date }: { date: Ymd }) {
   return (
     <div className="pop-wrap" ref={ref}>
       <button className="btn primary" onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open}>
-        <Plus size={15} /> <span className="hide-sm">New</span>
+        <Plus size={17} /> <span className="hide-sm">New</span>
       </button>
       {open && (
-        <div className="pop stack tight" style={{ right: 0, top: 40, width: 200, padding: 6 }} role="menu">
+        <div className="pop stack tight" style={{ right: 0, top: 48, width: 210, padding: 6 }} role="menu">
           <span className="xs muted" style={{ padding: "4px 8px" }}>For {fmt(parseYmd(date), { weekday: "short", day: "numeric", month: "short" })}</span>
           <button role="menuitem" className="nav-item" onClick={() => pick(() => ui.editTask(null, date))}><ListTodo size={15} /> Task</button>
           <button role="menuitem" className="nav-item" onClick={() => pick(() => ui.editReminder(null, date))}><Bell size={15} /> Reminder</button>
@@ -324,11 +379,11 @@ function NotificationCentre() {
   return (
     <div className="pop-wrap" ref={ref}>
       <button className="btn ghost icon" style={{ position: "relative" }} aria-label={`Notifications${unread ? `, ${unread} unread` : ""}`} aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-        <Bell size={16} />
+        <Bell size={18} />
         {unread > 0 && <span className="bell-dot num">{unread > 9 ? "9+" : unread}</span>}
       </button>
       {open && (
-        <div className="pop" style={{ right: 0, top: 40, width: "min(360px, calc(100vw - 24px))", padding: 0 }} role="dialog" aria-label="Notification centre">
+        <div className="pop" style={{ right: 0, top: 48, width: "min(360px, calc(100vw - 24px))", padding: 0 }} role="dialog" aria-label="Notification centre">
           <div className="card-head">
             <span className="card-title">Notifications</span>
             <span className="row" style={{ gap: 2 }}>

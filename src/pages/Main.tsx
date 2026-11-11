@@ -103,7 +103,7 @@ function TaskRow({ t, date, done, overdue, hour12 }: { t: Task; date: string; do
   return (
     <div className="list-row" style={{ alignItems: "center" }}>
       <span className={"prio " + t.priority} style={{ minHeight: 34 }} title={`${t.priority} priority`} />
-      <Check checked={done} label={done ? "Reopen task" : "Mark complete"} onChange={() => toggleTask(t, date)} />
+      <Check checked={done} label={done ? `Reopen "${t.title}"` : `Mark "${t.title}" complete`} onChange={() => toggleTask(t, date)} />
       <button className="grow" style={{ border: 0, background: "none", textAlign: "left", padding: 0, cursor: "pointer" }} onClick={() => ui.editTask(t)}>
         <div className={"strong truncate" + (done ? " muted" : "")} style={done ? { textDecoration: "line-through" } : undefined}>{t.title}</div>
         <div className="small muted row wrap" style={{ gap: "2px 8px" }}>
@@ -189,7 +189,7 @@ function ReminderRow({ r, date, at, done, overdue, hour12 }: { r: Reminder; date
   const fire = reminderFireTime(r, date);
   return (
     <div className="list-row" style={{ alignItems: "center" }}>
-      <Check checked={done} label={done ? "Reopen reminder" : "Mark complete"} onChange={() => toggleReminder(r, date)} />
+      <Check checked={done} label={done ? `Reopen "${r.message}"` : `Mark "${r.message}" complete`} onChange={() => toggleReminder(r, date)} />
       <button className="grow" style={{ border: 0, background: "none", textAlign: "left", padding: 0, cursor: "pointer" }} onClick={() => ui.editReminder(r)}>
         <div className={"strong truncate" + (done ? " muted" : "")} style={done ? { textDecoration: "line-through" } : undefined}>{r.message}</div>
         <div className="small muted row wrap" style={{ gap: "2px 8px" }}>

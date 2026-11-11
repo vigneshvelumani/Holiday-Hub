@@ -6,6 +6,10 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  # Rebuild every 30 minutes so the pre-fetched news (dist/feeds/*.json) stays current.
+  # GitHub may delay scheduled runs, and pauses them after 60 days without repository activity.
+  schedule:
+    - cron: "7,37 * * * *"
 
 permissions:
   contents: read
@@ -28,6 +32,11 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+      # Fetch the publishers' RSS feeds server-side and ship them with the site (same origin,
+      # no keys). A feed outage must never block a deploy: the app falls back by itself.
+      - name: Pre-fetch news feeds
+        continue-on-error: true
+        run: node scripts/build-feeds.mjs dist
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

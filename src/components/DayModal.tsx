@@ -219,7 +219,7 @@ export function DayModal({ date, onClose, onDate }: { date: Date; onClose: () =>
               <div className="row">
                 {MOODS.map((m) => (
                   <button key={m.value} className="btn sm" aria-pressed={mood?.mood === m.value} style={mood?.mood === m.value ? { background: "var(--accent-soft)", borderColor: "var(--accent)" } : undefined} onClick={() => (mood?.mood === m.value ? removeItem("moods", key) : saveItem("moods", { id: key, mood: m.value }))}>
-                    <span aria-hidden>{m.emoji}</span> {m.label}
+                    <m.Icon size={15} aria-hidden /> {m.label}
                   </button>
                 ))}
               </div>
