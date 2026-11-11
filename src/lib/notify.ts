@@ -39,7 +39,7 @@ export function notify(title: string, body: string, dateKey?: string, quiet = fa
   if (!quiet) toast(title, body, "info");
   if (notificationsSupported() && Notification.permission === "granted") {
     try {
-      new Notification(title, { body, icon: "/favicon.svg", tag: n.id });
+      new Notification(title, { body, icon: `${import.meta.env.BASE_URL}favicon.svg`, tag: n.id });
     } catch {
       /* some mobile browsers only allow notifications from a service worker */
     }
