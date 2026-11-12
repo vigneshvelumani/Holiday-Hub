@@ -13,13 +13,12 @@ const FEED_KEY: string =
   import.meta.env?.VITE_FEED_KEY ||
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNndWF0dWJqd25mbG1zZmFueXF6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyOTQ3NjcsImV4cCI6MjA5Mjg3MDc2N30.Iufsp_kDGTw9AylrhZV-kBzrSTD5Pl6ky1bWfOQLYAg";
 
-async function getJson<T>(url: string, init?: RequestInit, timeoutMs = 15000): Promise<T> {
+/** fetch with a timeout; the timer also covers reading the body. Errors come back as plain, readable messages. */
+async function request<T>(url: string, init: RequestInit | undefined, timeoutMs: number, read: (r: Response) => Promise<T>): Promise<T> {
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), timeoutMs);
   try {
-    const r = await fetch(url, { ...init, signal: ctl.signal });
-    if (!r.ok) throw new Error(`Request failed (${r.status})`);
-    return (await r.json()) as T;
+    return await read(await fetch(url, { ...init, signal: ctl.signal }));
   } catch (e) {
     if ((e as Error).name === "AbortError") throw new Error("The request timed out.");
     if (e instanceof TypeError) throw new Error("Network unavailable.");
@@ -27,6 +26,19 @@ async function getJson<T>(url: string, init?: RequestInit, timeoutMs = 15000): P
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function getJson<T>(url: string, init?: RequestInit, timeoutMs = 15000): Promise<T> {
+  return request(url, init, timeoutMs, async (r) => {
+    if (!r.ok) throw new Error(r.status === 429 ? "The service is busy (too many requests). Try again in a few minutes." : `Request failed (${r.status})`);
+    const body = await r.text();
+    try {
+      return JSON.parse(body) as T;
+    } catch {
+      // e.g. an HTML error page or an empty body
+      throw new Error("The service returned an unreadable response.");
+    }
+  });
 }
 
 // ── Weather ──────────────────────────────────────────────────────────────────
@@ -239,6 +251,8 @@ export interface NewsItem {
   related: { title: string; source: string; link: string }[];
 }
 
+// feeds:begin — scripts/build-feeds.mjs evaluates this block on its own to pre-fetch the
+// feeds at deploy time. Keep it plain data: string constants and the array, nothing else.
 const G = "https://news.google.com/rss";
 const TH = "https://www.thehindu.com";
 const BBC = "https://feeds.bbci.co.uk";
@@ -257,6 +271,7 @@ export const NEWS_CATEGORIES: { id: string; label: string; feeds: string[] }[] =
   { id: "trending", label: "Trending", feeds: [`${G}?hl=en-IN&gl=IN&ceid=IN:en`] },
   { id: "top", label: "Tech wire", feeds: [] }, // the original site's feed (world / tech / IT / HN)
 ];
+// feeds:end
 export const newsCategory = (id: string) => NEWS_CATEGORIES.find((c) => c.id === id);
 export const newsSearchFeed = (q: string) => `${G}/search?q=${encodeURIComponent(q)}&hl=en-IN&gl=IN&ceid=IN:en`;
 
@@ -273,7 +288,21 @@ function idOf(link: string): string {
   for (let i = 0; i < link.length; i++) h = ((h << 5) + h + link.charCodeAt(i)) >>> 0;
   return h.toString(36);
 }
-const httpsImage = (u: string | null | undefined) => (u && /^https:\/\//.test(u) ? u : undefined);
+/** Only well-formed https URLs are ever handed to an <img>; anything else is dropped. */
+function httpsImage(u: unknown): string | undefined {
+  if (typeof u !== "string" || !u.trim()) return undefined;
+  try {
+    const url = new URL(u.trim().replace(/^\/\//, "https://"));
+    return url.protocol === "https:" && url.hostname.includes(".") ? url.href : undefined;
+  } catch {
+    return undefined;
+  }
+}
+/** A feed's date as ISO 8601, or null when it is missing or unparseable (never "Invalid Date"). */
+function isoDate(d: unknown): string | null {
+  const t = typeof d === "string" && d.trim() ? Date.parse(d) : NaN;
+  return Number.isFinite(t) ? new Date(t).toISOString() : null;
+}
 
 /** Feed descriptions are plain text, HTML, or (Google News) a list of related coverage. */
 function readDescription(html: string, title: string): { summary: string; related: NewsItem["related"]; image?: string } {
@@ -312,31 +341,86 @@ function splitSource(title: string, source: string): { title: string; source: st
 
 type Raw = Omit<NewsItem, "id" | "category">;
 
+/**
+ * What an RSS item states, before any clean-up. The dev relay reader below and the
+ * deploy-time script (scripts/build-feeds.mjs → feeds/<category>.json) both produce
+ * this shape, so everything after it is shared.
+ */
+interface FeedFields {
+  title: string;
+  link: string;
+  pubDate: string | null;
+  /** the item's description, as HTML or text */
+  description: string;
+  /** content:encoded, when the feed ships article text */
+  content?: string;
+  /** the item's <source> (Google News names the publisher there) */
+  source?: string;
+  author?: string;
+  image?: string;
+}
+
+function fromFields(f: FeedFields, feed: string): Raw {
+  const title = String(f.title || "");
+  const s = splitSource(title, String(f.source || "") || PUBLISHER[hostOf(feed)] || "");
+  const d = readDescription(String(f.description || ""), title);
+  return {
+    title: s.title, source: s.source, link: String(f.link || ""), pubDate: f.pubDate || null, summary: d.summary, related: d.related,
+    image: httpsImage(f.image) || d.image, author: f.author ? String(f.author) : undefined, content: readContent(String(f.content || ""), d.summary),
+  };
+}
+
+// The relay only exists under `npm run dev` / `npm run preview`. On static hosting the
+// first request finds that out, and the rest of the session skips it.
+let relayMissing = false;
+
 async function rssDirect(feed: string): Promise<Raw[]> {
-  const r = await fetch(`${import.meta.env.BASE_URL}api/rss?url=${encodeURIComponent(feed)}`);
-  const type = r.headers.get("content-type") || "";
-  if (!r.ok || !type.includes("xml")) throw new Error("relay unavailable");
-  const xml = new DOMParser().parseFromString(await r.text(), "application/xml");
+  if (relayMissing) throw new Error("relay unavailable");
+  const body = await request(`${import.meta.env.BASE_URL}api/rss?url=${encodeURIComponent(feed)}`, undefined, 15000, async (r) => {
+    const isXml = (r.headers.get("content-type") || "").includes("xml");
+    if (r.status === 404 || r.status === 405 || (r.ok && !isXml)) relayMissing = true;
+    if (!r.ok || !isXml) throw new Error("relay unavailable");
+    return r.text();
+  });
+  const xml = new DOMParser().parseFromString(body, "application/xml");
   if (xml.querySelector("parsererror")) throw new Error("bad feed");
-  const publisher = PUBLISHER[hostOf(feed)] || "";
   return [...xml.querySelectorAll("item")].map((it) => {
     const text = (tag: string) => it.getElementsByTagName(tag)[0]?.textContent?.trim() || "";
-    const attr = (tag: string, name: string) => it.getElementsByTagName(tag)[0]?.getAttribute(name);
-    const s = splitSource(text("title"), text("source") || publisher);
-    const d = readDescription(text("description"), text("title"));
-    return {
-      title: s.title, source: s.source, link: text("link"), pubDate: text("pubDate") || null, summary: d.summary, related: d.related,
-      image: httpsImage(attr("media:content", "url")) || httpsImage(attr("media:thumbnail", "url")) || httpsImage(attr("enclosure", "url")) || d.image,
-      author: text("dc:creator") || text("author") || undefined, content: readContent(text("content:encoded"), d.summary),
-    };
+    const media = (tag: string) =>
+      [...it.getElementsByTagName(tag)]
+        .filter((el) => /^(image.*)?$/i.test(el.getAttribute("medium") || el.getAttribute("type") || ""))
+        .map((el) => httpsImage(el.getAttribute("url")))
+        .find(Boolean);
+    return fromFields(
+      {
+        title: text("title"), link: text("link"), pubDate: text("pubDate") || null, description: text("description"), content: text("content:encoded"),
+        source: text("source"), author: text("dc:creator") || text("author"), image: media("media:content") || media("media:thumbnail") || media("enclosure"),
+      },
+      feed,
+    );
   });
+}
+
+/** News older than this is still shown, but flagged, and a fresher source is tried first. */
+const STATIC_STALE = 3 * 3600000;
+
+/**
+ * The category's feeds as pre-fetched at deploy time (same origin, static).
+ * Resolves with the time the file was generated — not the time it was read.
+ */
+async function staticFeed(id: string): Promise<{ raw: Raw[]; at: number }> {
+  const j = await getJson<any>(`${import.meta.env.BASE_URL}feeds/${encodeURIComponent(id)}.json`, { cache: "no-cache" }, 12000);
+  const at = Date.parse(j?.generatedAt);
+  if (!Number.isFinite(at) || !Array.isArray(j?.items) || !j.items.length) throw new Error("The saved news file is empty or unreadable.");
+  const raw = (j.items as (FeedFields & { feed?: string })[]).filter((it) => it && typeof it === "object").map((it) => fromFields(it, String(it.feed || "")));
+  return { raw, at: Math.min(at, Date.now()) };
 }
 
 async function rssViaService(feed: string): Promise<Raw[]> {
   const j = await getJson<any>(`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(feed)}`);
-  if (j.status !== "ok") throw new Error(j.message || "The news feed could not be read.");
+  if (j?.status !== "ok" || !Array.isArray(j.items)) throw new Error((typeof j?.message === "string" && j.message) || "The news feed could not be read.");
   const publisher = PUBLISHER[hostOf(feed)] || "";
-  return (j.items || []).map((it: any) => {
+  return j.items.map((it: any) => {
     const fromGoogle = hostOf(feed) === "news.google.com";
     const s = splitSource(String(it.title || ""), fromGoogle ? String(it.author || "") : publisher);
     const d = readDescription(String(it.description || ""), String(it.title || ""));
@@ -353,18 +437,47 @@ async function rssViaService(feed: string): Promise<Raw[]> {
 async function originalFeed(): Promise<Raw[]> {
   const j = await getJson<any>(`${FEED_BASE}/news-feed`, { headers: { Authorization: `Bearer ${FEED_KEY}` } }, 25000);
   const tags: Record<string, string> = { world: "World", tech: "Tech", it: "IT", hn: "HN" };
-  return (j.items || []).map((it: any) => {
-    const d = readDescription(String(it.description || it.summary || ""), String(it.title || ""));
-    return { title: String(it.title || ""), link: String(it.link || ""), source: String(it.source || ""), pubDate: it.pubDate || null, summary: d.summary, related: d.related, image: d.image, tag: tags[it.category] || it.category };
-  });
+  if (!Array.isArray(j?.items)) throw new Error((typeof j?.error === "string" && j.error) || "The news service returned an unexpected response.");
+  return j.items
+    .filter((it: any) => it && typeof it === "object")
+    .map((it: any) => {
+      const d = readDescription(String(it.description || it.summary || ""), String(it.title || ""));
+      const tag = typeof it.category === "string" ? tags[it.category] || it.category : undefined;
+      return { title: String(it.title || ""), link: String(it.link || ""), source: String(it.source || ""), pubDate: typeof it.pubDate === "string" ? it.pubDate : null, summary: d.summary, related: d.related, image: d.image, tag };
+    });
 }
 
-async function readFeed(feed: string): Promise<Raw[]> {
-  try {
-    return await rssDirect(feed);
-  } catch {
-    return rssViaService(feed);
+/** Reads every feed with `reader`; the feeds that answered, or null (plus the first error) if none did. */
+async function readAll(feeds: string[], reader: (feed: string) => Promise<Raw[]>): Promise<{ raw: Raw[] | null; error?: Error }> {
+  const got = await Promise.allSettled(feeds.map(reader));
+  const ok = got.filter((g): g is PromiseFulfilledResult<Raw[]> => g.status === "fulfilled");
+  if (ok.length) return { raw: ok.flatMap((g) => g.value) };
+  return { raw: null, error: (got.find((g) => g.status === "rejected") as PromiseRejectedResult | undefined)?.reason };
+}
+
+/**
+ * Where headlines come from, in order:
+ *  1. the same-origin dev relay (/api/rss) — only under `npm run dev` / `preview`;
+ *  2. the same-origin static files written at deploy time (feeds/<category>.json);
+ *  3. the public rss2json service, as a last resort.
+ * Search results cannot be pre-fetched, so search skips step 2.
+ * `at` is when the headlines were actually fetched from the publishers.
+ */
+async function gather(id: string, feeds: string[]): Promise<{ raw: Raw[]; at: number }> {
+  if (!feeds.length) return { raw: await originalFeed(), at: Date.now() };
+  const search = id.startsWith("search:");
+  const relay = await readAll(feeds, rssDirect);
+  if (relay.raw) return { raw: relay.raw, at: Date.now() };
+  let saved: { raw: Raw[]; at: number } | null = null;
+  if (!search) {
+    saved = await staticFeed(id).catch(() => null);
+    if (saved && Date.now() - saved.at < STATIC_STALE) return saved;
   }
+  const service = await readAll(feeds, rssViaService);
+  if (service.raw) return { raw: service.raw, at: Date.now() };
+  if (saved) return saved; // old, but real — and reported with its true age
+  const why = service.error?.message || "The news feeds could not be reached.";
+  throw new Error(search ? `Search is unavailable right now. ${why}` : why);
 }
 
 // every article seen this session, so the reader can open one by id
@@ -376,26 +489,52 @@ export function rememberArticles(items: NewsItem[]) {
 
 const NEWS_TTL = 8 * 60000;
 const NEWS_REFRESH = 10 * 60000;
-export async function fetchNews(id: string, feeds: string[], force = false): Promise<NewsItem[]> {
-  const key = "almanac.news3:" + id;
-  const c = cacheGet<NewsItem[]>(key, NEWS_TTL);
-  if (c?.fresh && !force) return rememberArticles(c.value), c.value;
-  let raw: Raw[];
-  if (!feeds.length) raw = await originalFeed();
-  else {
-    const got = await Promise.allSettled(feeds.map(readFeed));
-    const ok = got.filter((g): g is PromiseFulfilledResult<Raw[]> => g.status === "fulfilled");
-    if (!ok.length) throw new Error((got[0] as PromiseRejectedResult).reason?.message || "The news feeds could not be reached.");
-    raw = ok.flatMap((g) => g.value);
-  }
+/** A category's headlines plus the time they were fetched from the publishers. */
+interface NewsLoad {
+  items: NewsItem[];
+  at: number;
+}
+const newsKey = (id: string) => "almanac.news4:" + id;
+function savedNews(id: string): { value: NewsLoad; fresh: boolean } | null {
+  const c = cacheGet<NewsLoad>(newsKey(id), NEWS_TTL);
+  return c && Array.isArray(c.value?.items) && typeof c.value.at === "number" ? c : null;
+}
+/** The same headline from two feeds counts once, whatever its case, quotes or punctuation. */
+const headlineKey = (title: string) => title.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+
+function tidy(id: string, raw: Raw[]): NewsItem[] {
   const seen = new Set<string>();
-  const items: NewsItem[] = raw
-    .filter((i) => i.title && /^https?:\/\//.test(i.link) && !seen.has(i.title) && seen.add(i.title))
-    .map((i) => ({ ...i, id: idOf(i.link), category: id.startsWith("search:") ? "search" : id, summary: (i.summary.startsWith(i.title) ? i.summary.slice(i.title.length).replace(/^[\s\-–|]+/, "") : i.summary).slice(0, 900) }))
+  const once = (k: string) => !seen.has(k) && !!seen.add(k);
+  return raw
+    .filter((i) => i.title && /^https?:\/\//.test(i.link) && once("l:" + i.link) && once("t:" + (headlineKey(i.title) || i.title)))
+    .map((i) => ({
+      ...i, id: idOf(i.link), category: id.startsWith("search:") ? "search" : id, pubDate: isoDate(i.pubDate), image: httpsImage(i.image),
+      summary: (i.summary.startsWith(i.title) ? i.summary.slice(i.title.length).replace(/^[\s\-–|]+/, "") : i.summary).slice(0, 900),
+    }))
     .sort((a, b) => (id === "trending" ? b.related.length - a.related.length : 0) || (Date.parse(b.pubDate || "") || 0) - (Date.parse(a.pubDate || "") || 0));
-  rememberArticles(items);
-  if (!id.startsWith("search:")) cacheSet(key, items.slice(0, 60));
-  return items;
+}
+
+const newsInflight = new Map<string, Promise<NewsLoad>>();
+function loadNews(id: string, feeds: string[], force: boolean): Promise<NewsLoad> {
+  const c = savedNews(id);
+  if (c?.fresh && !force) return rememberArticles(c.value.items), Promise.resolve(c.value);
+  let p = newsInflight.get(id);
+  if (!p) {
+    p = gather(id, feeds)
+      .then(({ raw, at }) => {
+        const load: NewsLoad = { items: tidy(id, raw), at };
+        rememberArticles(load.items);
+        if (!id.startsWith("search:")) cacheSet(newsKey(id), { items: load.items.slice(0, 60), at });
+        return load;
+      })
+      .finally(() => newsInflight.delete(id));
+    newsInflight.set(id, p);
+  }
+  return p;
+}
+
+export async function fetchNews(id: string, feeds: string[], force = false): Promise<NewsItem[]> {
+  return (await loadNews(id, feeds, force)).items;
 }
 
 /** Headlines for a category. Refreshes itself every 10 minutes and whenever the tab is reopened. */
@@ -407,12 +546,14 @@ export function useNews(id: string, feeds: string[]): Loadable<NewsItem[]> {
   const feedKey = feeds.join("|");
   const load = useCallback(
     (force: boolean, quiet: boolean) => {
-      const saved = cacheGet<NewsItem[]>("almanac.news3:" + id, NEWS_TTL);
-      if (saved) rememberArticles(saved.value);
-      setState((p) => (quiet && p.data ? { ...p, loading: true } : { data: saved?.value ?? null, loading: true, error: null, stale: false, updatedAt: saved?.at }));
-      fetchNews(id, feeds, force)
-        .then((items) => live.current && current.current === id && setState({ data: items, loading: false, error: null, stale: false, updatedAt: Date.now() }))
-        .catch((e: Error) => live.current && current.current === id && setState((p) => ({ data: p.data ?? saved?.value ?? null, loading: false, error: e.message || "Couldn't load news.", stale: !!(p.data ?? saved), updatedAt: p.updatedAt })));
+      const saved = savedNews(id)?.value ?? null;
+      if (saved) rememberArticles(saved.items);
+      setState((p) => (quiet && p.data ? { ...p, loading: true } : { data: saved?.items ?? null, loading: true, error: null, stale: false, updatedAt: saved?.at }));
+      // `updatedAt` is when the headlines left the publishers (for the deploy-time files, when
+      // they were generated) — never simply "now" — so old news is not presented as fresh.
+      loadNews(id, feeds, force)
+        .then((n) => live.current && current.current === id && setState({ data: n.items, loading: false, error: null, stale: Date.now() - n.at > STATIC_STALE, updatedAt: n.at }))
+        .catch((e: Error) => live.current && current.current === id && setState((p) => ({ data: p.data ?? saved?.items ?? null, loading: false, error: e?.message || "Couldn't load news.", stale: !!(p.data ?? saved), updatedAt: p.updatedAt })));
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [id, feedKey],

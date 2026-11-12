@@ -1,8 +1,5 @@
 import { createContext, useContext, useEffect, useRef, type CSSProperties, type ReactNode } from "react";
-import {
-  AlertTriangle, Bell, Briefcase, Cake, CalendarDays, Check as CheckIcon, Cloud, CloudDrizzle, CloudFog, CloudLightning, CloudRain, CloudSnow,
-  CloudSun, Flag, Landmark, Loader2, Moon, Palmtree, RefreshCw, Square, SquareCheck, Sun, Wallet, X,
-} from "lucide-react";
+import { AlertTriangle, Bell, Briefcase, Cake, CalendarDays, Check as CheckIcon, Cloud, CloudDrizzle, CloudFog, CloudLightning, CloudRain, CloudSnow, CloudSun, Flag, Landmark, Loader2, Moon, Palmtree, RefreshCw, Square, SquareCheck, Sun, Wallet, X, Smile, Meh, Frown } from "lucide-react";
 import type { DayItem } from "../lib/items.ts";
 import { fmtTime, parseYmd, type Ymd } from "../lib/dates.ts";
 import { SATURDAY_LABEL, type SaturdayStatus } from "../lib/saturday.ts";
@@ -165,13 +162,13 @@ export function WeatherIcon({ code, isDay = true, size = 16 }: { code: number; i
   return <Icon size={size} aria-label={weatherLabel(code)} className={"wx-" + g} />;
 }
 
-export function SatTag({ status, size = "sm", long }: { status: SaturdayStatus; size?: "sm" | "lg"; long?: boolean }) {
+export function SatTag({ status, size = "sm", long, solid }: { status: SaturdayStatus; size?: "sm" | "lg" | "cell"; long?: boolean; solid?: boolean }) {
   const L = SATURDAY_LABEL[status];
-  const text = long ? L.long : size === "lg" ? L.short : L.tiny;
+  const text = long ? L.long : size === "sm" ? L.tiny : L.short;
   return (
-    <span className={`sat-tag ${status} ${size === "lg" ? "lg" : ""}`} title={`${L.long} — office schedule (fixed rule)`}>
-      {status === "working" ? <Briefcase size={size === "lg" ? 13 : 10} /> : <Palmtree size={size === "lg" ? 13 : 10} />}
-      {text}
+    <span className={`sat-tag ${status} ${size === "lg" ? "lg" : ""} ${solid ? "solid" : ""}`} title={`${L.long} — office schedule (fixed rule)`}>
+      {status === "working" ? <Briefcase size={size === "sm" ? 11 : 14} /> : <Palmtree size={size === "sm" ? 11 : 14} />}
+      {size === "cell" ? <><span className="full">{L.short}</span><span className="tiny" aria-hidden>{status === "working" ? "Work" : "Off"}</span></> : text}
     </span>
   );
 }
@@ -221,10 +218,10 @@ export function ItemDot({ item }: { item: DayItem }) {
   return <span className={cls} style={tone(item.tone)} />;
 }
 
-export const MOODS: { value: MoodValue; label: string; emoji: string }[] = [
-  { value: "happy", label: "Happy", emoji: "😊" },
-  { value: "neutral", label: "Neutral", emoji: "😐" },
-  { value: "sad", label: "Sad", emoji: "😔" },
+export const MOODS: { value: MoodValue; label: string; Icon: typeof Smile }[] = [
+  { value: "happy", label: "Happy", Icon: Smile },
+  { value: "neutral", label: "Neutral", Icon: Meh },
+  { value: "sad", label: "Sad", Icon: Frown },
 ];
 
 /** What happens when an item chip is clicked anywhere in the app. */

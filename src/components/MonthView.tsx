@@ -107,10 +107,8 @@ export function MonthView({ focus, selected, onSelect, data, s, filter, weather,
               >
                 <div className="cell-top">
                   <span className={`daynum ${isToday ? "today" : d.getDay() === 0 ? "sun" : ""}`}>{d.getDate()}</span>
-                  {isToday && <span className="today-label">TODAY</span>}
-                  {sat && <SatTag status={sat} />}
                   <span className="cell-meta">
-                    {mood && <span title={`Mood: ${mood}`}>{MOODS.find((m) => m.value === mood)?.emoji}</span>}
+                    {mood && (() => { const M = MOODS.find((m) => m.value === mood); return M ? <M.Icon size={13} aria-label={`Mood: ${M.label}`} /> : null; })()}
                     {noteDays.has(key) && s.layers.notes && <span className="dot" style={tone("ink")} title="Has a note" />}
                     {w && (
                       <span className="row num" style={{ gap: 2 }} title={`${weatherLabel(w.code)}, ${Math.round(w.tmax)}° / ${Math.round(w.tmin)}°`}>
@@ -120,6 +118,7 @@ export function MonthView({ focus, selected, onSelect, data, s, filter, weather,
                     )}
                   </span>
                 </div>
+                {isToday && <span className="today-label">Today</span>}
                 {bank && (
                   <span className="bankline" title="Bank Saturday rule: 2nd and 4th Saturdays are bank holidays">
                     <Landmark size={10} /> Banks {bank}
@@ -129,6 +128,7 @@ export function MonthView({ focus, selected, onSelect, data, s, filter, weather,
                   <ItemChip key={it.key} item={it} onClick={onItem} draggable hour12={s.hour12} showTime={false} />
                 ))}
                 {items.length > max && <span className="more">+{items.length - max} more</span>}
+                {sat && <span className="cell-sat"><SatTag status={sat} size="cell" /></span>}
                 <div className="cell-dots">
                   {items.slice(0, 4).map((it) => (
                     <ItemDot key={it.key} item={it} />

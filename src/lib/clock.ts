@@ -61,7 +61,14 @@ export function gmtLabel(offsetMin: number): string {
 const nameCache = new Map<string, string>();
 /** "India Standard Time", "Eastern Standard Time" … */
 export function tzName(tz: string, d: Date = new Date(), style: "long" | "short" = "long"): string {
-  const key = `${tz}|${style}|${d.getMonth()}`;
+  // keyed by the offset in force at `d`, so a daylight-saving change inside a month gets the right name
+  let off = 0;
+  try {
+    off = tzOffset(tz, d);
+  } catch {
+    /* unknown zone: falls through to the plain id below */
+  }
+  const key = `${tz}|${style}|${off}`;
   let v = nameCache.get(key);
   if (!v) {
     try {

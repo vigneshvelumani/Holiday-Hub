@@ -6,15 +6,15 @@ import { useMemo, useState, type FormEvent } from "react";
 import { Loader2, MapPin, Moon, Plus, Search, Sun, X } from "lucide-react";
 import { sunTimes } from "../lib/astro.ts";
 import {
-  LOCAL_TZ, allTimeZones, dayShift, diffLabel, fmtZone, fmtZoneDate, gmtLabel, hereName, instantIn, nextDstChange, tzCity, tzName, tzOffset, tzRegion, useNow, zoneParts, type WorldClock,
+  LOCAL_TZ, allTimeZones, dayShift, diffLabel, fmtZone, fmtZoneDate, gmtLabel, hereName, nextDstChange, tzCity, tzName, tzOffset, tzRegion, useNow, zoneParts, type WorldClock,
 } from "../lib/clock.ts";
-import { ymd } from "../lib/dates.ts";
 import { searchPlaces } from "../lib/location.ts";
 import { toast } from "../lib/notify.ts";
 import { useSky } from "../lib/sky.ts";
 import { getSettings, updateSettings, useSettings } from "../lib/store.ts";
 import { AnalogClock, isNightIn } from "../components/Clock.tsx";
 import { SkyBox } from "../components/SkyBox.tsx";
+import { MeetingPlanner, TimeConverter } from "../components/TimeTools.tsx";
 import { Empty, ErrorNote } from "../components/ui.tsx";
 
 function useClocks() {
@@ -90,17 +90,7 @@ export function WorldClockPage() {
   const [showAll, setShowAll] = useState(false);
 
   const lp = zoneParts(LOCAL_TZ, now);
-  const [convTz, setConvTz] = useState(LOCAL_TZ);
-  const [convDate, setConvDate] = useState(ymd(now));
-  const [convTime, setConvTime] = useState(`${String(lp.hour).padStart(2, "0")}:${String(lp.minute).padStart(2, "0")}`);
-  const [custom, setCustom] = useState(false);
   const minuteKey = Math.floor(now.getTime() / 60000);
-  const moment = useMemo(() => {
-    if (!custom) return new Date(minuteKey * 60000);
-    const [y, m, d] = convDate.split("-").map(Number);
-    const [h, mi] = convTime.split(":").map(Number);
-    return y && m && d ? instantIn(convTz, y, m, d, h || 0, mi || 0) : new Date(minuteKey * 60000);
-  }, [custom, convDate, convTime, convTz, custom ? 0 : minuteKey]);
 
   const zones = allTimeZones();
   const text = q.trim().toLowerCase();
@@ -120,8 +110,6 @@ export function WorldClockPage() {
   };
 
   const here = hereName(s.location, now);
-  const rows: WorldClock[] = [{ tz: LOCAL_TZ, label: `${here} (you)` }, ...clocks];
-  const localMidnight = instantIn(LOCAL_TZ, lp.year, lp.month, lp.day, 0, 0);
   const browse = useMemo(() => {
     const d = new Date(minuteKey * 60000);
     return (text.length >= 2 ? zones.filter((z) => (z + " " + tzName(z)).toLowerCase().includes(text)) : zones).map((z) => ({ z, off: tzOffset(z, d) })).sort((a, b) => a.off - b.off || a.z.localeCompare(b.z));
@@ -215,59 +203,19 @@ export function WorldClockPage() {
           </div>
         </section>
 
-        <section className="card" aria-labelledby="h-conv">
-          <div className="card-head">
-            <h2 className="card-title" id="h-conv">Time converter</h2>
-            <button className="btn sm" onClick={() => setCustom((c) => !c)} aria-pressed={custom}>{custom ? "Use current time" : "Pick a time"}</button>
-          </div>
-          <div className="card-pad stack">
-            {custom && (
-              <div className="grid3">
-                <label className="field"><span className="label">Date</span><input className="input" type="date" value={convDate} onChange={(e) => setConvDate(e.target.value)} /></label>
-                <label className="field"><span className="label">Time</span><input className="input" type="time" value={convTime} onChange={(e) => setConvTime(e.target.value)} /></label>
-                <label className="field"><span className="label">In</span>
-                  <select className="select" value={convTz} onChange={(e) => setConvTz(e.target.value)}>
-                    {rows.map((r) => <option key={r.tz + r.label} value={r.tz}>{r.label}</option>)}
-                  </select>
-                </label>
-              </div>
-            )}
-            <table className="table">
-              <caption className="sr">The chosen moment in each of your cities</caption>
-              <tbody>
-                {rows.map((r) => (
-                  <tr key={r.tz + r.label}>
-                    <th scope="row" className="strong" style={{ paddingLeft: 0, textTransform: "none", letterSpacing: 0, fontSize: 14, color: "var(--ink)", borderBottom: "1px solid var(--line)" }}>{r.label}<div className="xs muted" style={{ fontWeight: 400 }}>{tzName(r.tz, moment, "short")} · {gmtLabel(tzOffset(r.tz, moment))}</div></th>
-                    <td className="num strong" style={{ textAlign: "right", fontSize: 16 }}>{fmtZone(moment, r.tz, s.hour12)}</td>
-                    <td className="small muted" style={{ textAlign: "right", paddingRight: 0, whiteSpace: "nowrap" }}>{fmtZoneDate(moment, r.tz)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
+        <TimeConverter />
       </div>
 
-      <section className="card" style={{ marginTop: 16 }} aria-labelledby="h-plan">
-        <div className="card-head">
-          <h2 className="card-title" id="h-plan">Meeting planner</h2>
-          <span className="xs muted">each column is one hour of your day · green = 9 am–6 pm there · violet = night</span>
-        </div>
-        <div className="card-pad" style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label="Meeting planner table, scrollable">
-          <div className="planner">
-            {rows.map((r) => (
-              <PlannerRow key={r.tz + r.label} r={r} start={localMidnight} nowHour={lp.hour} hour12={s.hour12} />
-            ))}
-          </div>
-        </div>
-      </section>
+      <div style={{ marginTop: 16 }}>
+        <MeetingPlanner />
+      </div>
 
       <section className="card" style={{ marginTop: 16 }} aria-labelledby="h-all">
         <div className="card-head">
           <h2 className="card-title" id="h-all">All time zones</h2>
           <span className="xs muted">{browse.length} zones{text.length >= 2 ? " match your search" : ""} · ordered west to east</span>
         </div>
-        <div style={{ overflowX: "auto" }}>
+        <div style={{ overflowX: "auto", position: "relative" }} tabIndex={0} role="region" aria-labelledby="h-all">
           <table className="table">
             <thead><tr><th scope="col">City / zone</th><th scope="col">Region</th><th scope="col">Zone name</th><th scope="col">Offset</th><th scope="col" style={{ textAlign: "right" }}>Time now</th><th scope="col"><span className="sr">Add</span></th></tr></thead>
             <tbody>
@@ -283,23 +231,5 @@ export function WorldClockPage() {
         )}
       </section>
     </div>
-  );
-}
-
-function PlannerRow({ r, start, nowHour, hour12 }: { r: WorldClock; start: Date; nowHour: number; hour12: boolean }) {
-  return (
-    <>
-      <div className="strong truncate">{r.label}</div>
-      {Array.from({ length: 24 }, (_, h) => {
-        const at = new Date(start.getTime() + h * 3600000);
-        const hr = zoneParts(r.tz, at).hour;
-        const cls = hr >= 9 && hr < 18 ? "work" : hr >= 22 || hr < 6 ? "sleep" : "";
-        return (
-          <div key={h} className={`hcell ${cls} ${h === nowHour ? "cur" : ""}`} title={`${r.label}: ${fmtZone(at, r.tz, hour12)}, ${fmtZoneDate(at, r.tz)}`}>
-            {hour12 ? hr % 12 || 12 : hr}
-          </div>
-        );
-      })}
-    </>
   );
 }

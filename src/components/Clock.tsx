@@ -56,6 +56,9 @@ export function AnalogClock({ tz, now, size = 96, night, daylight, label }: { tz
       {Array.from({ length: 12 }, (_, i) => (
         <line key={i} className={"tick" + (i % 3 === 0 ? " major" : "")} x1="50" y1={i % 3 === 0 ? 10 : 11.5} x2="50" y2="15" transform={`rotate(${i * 30} 50 50)`} />
       ))}
+      {size >= 80 && [12, 3, 6, 9].map((n, i) => (
+        <text key={n} x={50 + [0, 27, 0, -27][i]} y={50 + [-27, 0, 27, 0][i]} textAnchor="middle" dominantBaseline="central" aria-hidden>{n}</text>
+      ))}
       {hand("hour", hrs, 43200, 22, 3)}
       {hand("min", mins, 3600, 32, 2)}
       {hand("sec", secs, 60, 35, 1)}

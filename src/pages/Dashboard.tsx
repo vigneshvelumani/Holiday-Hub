@@ -1,22 +1,23 @@
-import { useMemo, useState, type ReactNode } from "react";
-import { ArrowRight, Bell, ChevronLeft, ChevronRight, Copy, Lock, Plus, RefreshCw, Share2 } from "lucide-react";
+import { useMemo, useState } from "react";
+import {
+  ArrowRight, ArrowUpRight, Briefcase, CalendarCheck2, ChevronLeft, ChevronRight, Copy, Droplets, Gauge, Hourglass, MapPin, Maximize2, OctagonAlert, Palmtree, Plus, RefreshCw, Share2, Sunrise, Sunset, TriangleAlert, Wind,
+} from "lucide-react";
 import { addDays, addMonths, dayDiff, fmt, fmtMonthYear, fmtTime, parseYmd, relDays, today, ymd } from "../lib/dates.ts";
 import { fmtInZone, panchangam, sunTimes } from "../lib/astro.ts";
-import { LOCAL_TZ, diffLabel, fmtZone, fmtZoneDate, tzName, tzOffset, useNow, zoneParts } from "../lib/clock.ts";
+import { LOCAL_TZ, diffLabel, fmtZone, useNow, zoneParts } from "../lib/clock.ts";
 import { regionsOf } from "../lib/holidays.ts";
-import { itemsBetween, itemsOn, nextSalary, toggleReminder, toggleTask } from "../lib/items.ts";
-import { placeCity } from "../lib/location.ts";
+import { itemsBetween, itemsOn, nextSalary, toggleReminder, toggleTask, type DayItem } from "../lib/items.ts";
+import { placeCity, placeRest } from "../lib/location.ts";
 import { toast } from "../lib/notify.ts";
 import { nextOfficeSaturday, officeSaturday } from "../lib/saturday.ts";
 import { aqiBand, newsCategory, useHoroscope, useNews, weatherLabel, type NewsItem } from "../lib/services.ts";
 import { useSky } from "../lib/sky.ts";
-import { useData, useSettings } from "../lib/store.ts";
+import { useData, useSettings, type ViewName } from "../lib/store.ts";
 import { thoughtCount, thoughtFor } from "../lib/thoughts.ts";
 import { AnalogClock, isNightIn } from "../components/Clock.tsx";
-import { LocationChip } from "../components/Location.tsx";
 import { MonthView } from "../components/MonthView.tsx";
 import { SkyBox } from "../components/SkyBox.tsx";
-import { Check, ItemChip, MoonDisc, SatTag, Seg, tone, useItemClick, useUi } from "../components/ui.tsx";
+import { Check, ItemIcon, MoonDisc, SatTag, Seg, WeatherIcon, tone, useItemClick, useUi } from "../components/ui.tsx";
 
 export function timeAgo(iso: string | number): string {
   const t = typeof iso === "number" ? iso : Date.parse(iso);
@@ -28,88 +29,37 @@ export function timeAgo(iso: string | number): string {
   return new Date(t).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
 }
 
-function SecHead({ title, more, onMore, id, children }: { title: string; more?: string; onMore?: () => void; id?: string; children?: ReactNode }) {
+export function Thumb({ n, eager }: { n: NewsItem; eager?: boolean }) {
+  const [bad, setBad] = useState(false);
   return (
-    <div className="sec-head">
-      <h2 id={id}>{title}</h2>
-      {children}
-      {more && <button className="more" onClick={onMore}>{more} <ArrowRight size={13} /></button>}
+    <div className="thumb-wrap">
+      {n.image && !bad ? (
+        <img className="thumb" src={n.image} alt="" loading={eager ? "eager" : "lazy"} referrerPolicy="no-referrer" onError={() => setBad(true)} />
+      ) : (
+        <div className="thumb none" aria-hidden>{(n.source || "News").slice(0, 18)}</div>
+      )}
     </div>
   );
 }
 
-// ── masthead: the day, the time and the sky over the active location ─────────
-function Masthead() {
-  const ui = useUi();
+// ── greeting on the sky: the day, the thought for the day, sunrise and sunset ──
+function Hello() {
   const s = useSettings();
-  const now = useNow(1000);
-  const sky = useSky(s);
-  const w = sky.weather.data;
-  const tz = s.location.tz;
-  const away = tzOffset(tz, now) !== tzOffset(LOCAL_TZ, now);
-  const hour = now.getHours();
-  const greeting = hour < 5 ? "Good night" : hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : hour < 21 ? "Good evening" : "Good night";
-  return (
-    <SkyBox sky={sky} className="mast">
-      <div className="mast-grid">
-        <div className="mast-date row" style={{ gap: 22, alignItems: "flex-end" }}>
-          <div className="mast-day num" aria-hidden>{now.getDate()}</div>
-          <div>
-            <div className="eyebrow">{greeting}</div>
-            <h1>
-              <span className="sr">Today is </span>{fmt(now, { weekday: "long" })}<span className="sr">, {fmt(now, { day: "numeric" })}</span>
-            </h1>
-            <div style={{ fontSize: 18 }}>{fmt(now, { month: "long", year: "numeric" })}</div>
-            <div className="mast-clock" role="timer" aria-label={`Current time ${fmtZone(now, LOCAL_TZ, s.hour12)}`}>{fmtZone(now, LOCAL_TZ, s.hour12, true)}</div>
-            <div className="small muted" style={{ marginTop: 4 }}>
-              {tzName(LOCAL_TZ, now)}
-              {away && <> · in {placeCity(s.location)} it is {fmtZone(now, tz, s.hour12)}, {fmtZoneDate(now, tz)}</>}
-            </div>
-          </div>
-        </div>
-
-        <div className="mast-wx" aria-live="polite">
-          {w ? (
-            <>
-              <div className="mast-temp tick" key={Math.round(w.current.temp)}>{Math.round(w.current.temp)}°<span style={{ fontSize: 28 }}>{w.unit}</span></div>
-              <div className="display" style={{ fontSize: 24 }}>{weatherLabel(w.current.code)}</div>
-              <div className="muted">Feels like {Math.round(w.current.feels)}° · High {Math.round(w.daily[0].tmax)}° · Low {Math.round(w.daily[0].tmin)}°</div>
-              {sky.weather.error && <div className="small muted">Couldn't refresh — showing the reading from {timeAgo(w.fetchedAt)}.</div>}
-            </>
-          ) : sky.weather.loading ? (
-            <div className="muted" role="status">Loading the weather for {placeCity(s.location)}…</div>
-          ) : (
-            <div style={{ maxWidth: 300 }}>
-              <div className="strong">Weather is temporarily unavailable</div>
-              <div className="small muted">{sky.weather.error || "No data was returned."}</div>
-              <button className="btn glass sm" style={{ marginTop: 8 }} onClick={sky.weather.refresh}><RefreshCw size={13} /> Try again</button>
-            </div>
-          )}
-        </div>
-
-        <div className="mast-foot">
-          <LocationChip light onOpen={ui.openLocation} />
-          {w && (
-            <div className="mast-facts">
-              <span>Humidity {w.current.humidity}%</span>
-              <span>Wind {Math.round(w.current.wind)} km/h</span>
-              <span>Rain {w.daily[0].rainProb ?? 0}%</span>
-              {w.air && <span>Air quality {Math.round(w.air.aqi)} · {aqiBand(w.air.aqi).label}</span>}
-            </div>
-          )}
-          <span className="grow" />
-          {w && <span className="muted">Updated {timeAgo(w.fetchedAt)}</span>}
-          <button className="btn glass sm" onClick={() => ui.go("weather")}>Full forecast <ArrowRight size={13} /></button>
-        </div>
-      </div>
-    </SkyBox>
-  );
-}
-
-function Thought() {
+  const now = useNow(30000);
   const [offset, setOffset] = useState(0);
   const q = thoughtFor(today(), offset);
   const text = `"${q.text}" — ${q.author}`;
+  const hour = now.getHours();
+  const greeting = hour < 5 ? "Good night" : hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : hour < 21 ? "Good evening" : "Good night";
+  const sun = useMemo(() => {
+    try {
+      const p = zoneParts(s.location.tz, now);
+      return sunTimes(s.location, p.year, p.month, p.day);
+    } catch {
+      return null;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [s.location, ymd(now)]);
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(text);
@@ -128,19 +78,176 @@ function Thought() {
     } else void copy();
   };
   return (
-    <section aria-labelledby="h-thought">
-      <SecHead title="Thought for the day" id="h-thought" />
-      <figure className="pull" style={{ margin: 0 }} key={offset}>
-        <blockquote className="tick">“{q.text}”</blockquote>
-        <figcaption className="row between" style={{ marginTop: 10 }}>
-          <span className="small muted">— {q.author}</span>
-          <span className="row" style={{ gap: 2 }}>
+    <header className="hello">
+      <div>
+        <div className="greet">{greeting}</div>
+        <h1><span className="sr">Today is </span>{fmt(now, { weekday: "long" })}</h1>
+        <div className="date">{fmt(now, { day: "numeric", month: "long", year: "numeric" })}</div>
+      </div>
+      {s.widgets.quote ? (
+        <figure className="hello-quote" style={{ margin: 0 }} aria-label="Thought for the day">
+          <blockquote className="tick" key={offset}>“{q.text}”</blockquote>
+          <figcaption>
+            <span>— {q.author}</span>
+            <span className="grow" />
             <button className="btn ghost icon sm" onClick={() => setOffset((o) => (o + 1) % thoughtCount)} aria-label="Show another thought"><RefreshCw size={14} /></button>
             <button className="btn ghost icon sm" onClick={copy} aria-label="Copy this thought"><Copy size={14} /></button>
             <button className="btn ghost icon sm" onClick={share} aria-label="Share this thought"><Share2 size={14} /></button>
-          </span>
-        </figcaption>
-      </figure>
+          </figcaption>
+        </figure>
+      ) : <span />}
+      {sun?.sunrise && sun.sunset && (
+        <div className="hello-sun" aria-label={`Sunrise and sunset in ${placeCity(s.location)}`}>
+          <div><Sunrise size={26} strokeWidth={1.7} /><span><span className="k" style={{ display: "block" }}>Sunrise</span><span className="v num">{fmtInZone(sun.sunrise, s.location.tz, s.hour12)}</span></span></div>
+          <div><Sunset size={26} strokeWidth={1.7} /><span><span className="k" style={{ display: "block" }}>Sunset</span><span className="v num">{fmtInZone(sun.sunset, s.location.tz, s.hour12)}</span></span></div>
+        </div>
+      )}
+    </header>
+  );
+}
+
+// ── weather: the live sky, the reading, the next hours ───────────────────────
+function WeatherCard() {
+  const ui = useUi();
+  const s = useSettings();
+  const sky = useSky(s);
+  const now = useNow(60000);
+  const w = sky.weather.data;
+  const hours = useMemo(() => {
+    if (!w) return [];
+    const p = zoneParts(w.tz, now);
+    const stamp = `${p.year}-${String(p.month).padStart(2, "0")}-${String(p.day).padStart(2, "0")}T${String(p.hour).padStart(2, "0")}:00`;
+    const i = Math.max(0, w.hourly.findIndex((h) => h.time >= stamp));
+    return w.hourly.slice(i, i + 5);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [w, Math.floor(now.getTime() / 3600000)]);
+  const hourLabel = (iso: string, i: number) => {
+    if (i === 0) return "Now";
+    const h = Number(iso.slice(11, 13));
+    return s.hour12 ? `${h % 12 || 12} ${h < 12 ? "AM" : "PM"}` : `${String(h).padStart(2, "0")}:00`;
+  };
+  const band = w?.air ? aqiBand(w.air.aqi) : null;
+  return (
+    <SkyBox sky={sky} className="wx-card a-wx">
+      <section className="wx-in" aria-labelledby="h-wx">
+        <div className="wx-top">
+          <button className="place" onClick={ui.openLocation} aria-label={`Weather location: ${s.location.name}. Change location`}>
+            <MapPin size={17} /> <span className="truncate">{placeCity(s.location)}{placeRest(s.location) ? `, ${placeRest(s.location).split(",").pop()!.trim()}` : ""}</span>
+          </button>
+          <button className="link" onClick={() => ui.go("weather")}>Forecast <ArrowRight size={14} /></button>
+        </div>
+        <h2 id="h-wx" className="sr">Current weather</h2>
+        {w ? (
+          <>
+            <div className="wx-now" aria-live="polite">
+              <WeatherIcon code={w.current.code} isDay={w.current.isDay} size={58} />
+              <div>
+                <div className="t tick" key={Math.round(w.current.temp)}>{Math.round(w.current.temp)}<sup>°{w.unit}</sup></div>
+                <div className="l">{weatherLabel(w.current.code)}</div>
+              </div>
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,.9)" }}>Feels like {Math.round(w.current.feels)}° · High {Math.round(w.daily[0].tmax)}° · Low {Math.round(w.daily[0].tmin)}°</div>
+            <div className="wx-facts">
+              <div><div className="k"><Droplets size={14} /> Humidity</div><div className="v num">{w.current.humidity}%</div></div>
+              <div><div className="k"><Wind size={14} /> Wind</div><div className="v num">{Math.round(w.current.wind)} km/h</div></div>
+              <div>
+                <div className="k"><Gauge size={14} /> Air quality</div>
+                {w.air && band ? <><div className="v num">{Math.round(w.air.aqi)}</div><div className="s truncate" title={band.label}>{band.label}</div></> : <div className="v">—</div>}
+              </div>
+            </div>
+            <div className="wx-hours" role="list" aria-label="Next hours">
+              {hours.map((h, i) => (
+                <div key={h.time} role="listitem" aria-label={`${hourLabel(h.time, i)}: ${Math.round(h.temp)} degrees, ${weatherLabel(h.code)}`}>
+                  <div className="h">{hourLabel(h.time, i)}</div>
+                  <WeatherIcon code={h.code} isDay={h.isDay} size={26} />
+                  <div className="d num">{Math.round(h.temp)}°</div>
+                </div>
+              ))}
+            </div>
+            <div className="wx-foot">
+              <span>{sky.weather.error ? `Couldn't refresh · reading from ${timeAgo(w.fetchedAt)}` : `Updated ${timeAgo(w.fetchedAt)}`}</span>
+              <button className="link" onClick={sky.weather.refresh} aria-label="Refresh the weather"><RefreshCw size={13} /></button>
+            </div>
+          </>
+        ) : sky.weather.loading ? (
+          <div role="status" style={{ marginTop: 20, fontWeight: 600 }}>Loading the weather for {placeCity(s.location)}…</div>
+        ) : (
+          <div style={{ marginTop: 20 }} role="alert">
+            <div className="strong">Weather is temporarily unavailable</div>
+            <div className="small" style={{ opacity: 0.9, marginTop: 4 }}>{sky.weather.error || "No data was returned."}</div>
+            <button className="btn glass sm" style={{ marginTop: 12 }} onClick={sky.weather.refresh}><RefreshCw size={13} /> Try again</button>
+          </div>
+        )}
+      </section>
+    </SkyBox>
+  );
+}
+
+function SaturdayCards() {
+  const ui = useUi();
+  const now = today();
+  return (
+    <>
+      {(["working", "off"] as const).map((st) => {
+        const d = nextOfficeSaturday(st, now);
+        const n = dayDiff(now, d);
+        return (
+          <button key={st} className={"sat-card2 " + st} onClick={() => ui.openDay(d)} aria-label={`Next ${st === "working" ? "working" : "non-working"} Saturday: ${fmt(d, { day: "numeric", month: "long", year: "numeric" })}, ${n === 0 ? "today" : `in ${n} days`}. Fixed office schedule.`}>
+            <span className="ico" aria-hidden>{st === "working" ? <Briefcase size={20} /> : <Palmtree size={20} />}</span>
+            <span className="k">Next {st === "working" ? "Working" : "Non-working"} Saturday</span>
+            <span className="v num">{fmt(d, { day: "numeric", month: "short", year: "numeric" })}</span>
+            <span className={"tagwrap sat-tag lg solid " + st}>{st === "working" ? "Working" : "Off"}</span>
+            <span className="n">{n === 0 ? "Today" : <>in <span className="tick" key={n}>{n}</span> day{n === 1 ? "" : "s"}</>}</span>
+          </button>
+        );
+      })}
+    </>
+  );
+}
+
+function Schedule({ todays, upTasks, upRem }: { todays: DayItem[]; upTasks: DayItem[]; upRem: DayItem[] }) {
+  const ui = useUi();
+  const s = useSettings();
+  const onItem = useItemClick();
+  const now = today();
+  const [tab, setTab] = useState<"today" | "tasks" | "reminders">("today");
+  const list = tab === "today" ? todays.slice(0, 6) : tab === "tasks" ? upTasks : upRem;
+  const satToday = officeSaturday(now);
+  return (
+    <section className="panel" aria-labelledby="h-sched">
+      <div className="panel-head">
+        <h2 id="h-sched">Today's schedule</h2>
+        <button className="link" onClick={() => (tab === "today" ? ui.openDay(now) : ui.go(tab))}>View all <ArrowRight size={14} /></button>
+      </div>
+      <Seg value={tab} onChange={setTab} label="Show today's items, tasks or reminders" options={[{ value: "today", label: "Today" }, { value: "tasks", label: "Tasks" }, { value: "reminders", label: "Reminders" }]} />
+      {tab === "today" && satToday && <div style={{ marginTop: 12 }}><SatTag status={satToday} size="lg" long /></div>}
+      <ul className="sched" key={tab} style={{ marginTop: 6 }}>
+        {list.length === 0 && (
+          <li className="note-state" style={{ display: "block" }}>
+            {tab === "today" ? "Nothing scheduled today." : tab === "tasks" ? "No open tasks." : "No reminders set."}
+          </li>
+        )}
+        {list.map((i) => (
+          <li key={i.key + i.date} className={i.done ? "done" : ""} style={tone(i.tone)}>
+            {i.task ? (
+              <Check checked={!!i.done} label={`Mark "${i.title}" ${i.done ? "not done" : "complete"}`} onChange={() => toggleTask(i.task!, i.date)} />
+            ) : i.reminder ? (
+              <Check checked={!!i.done} label={`Mark "${i.title}" ${i.done ? "not done" : "done"}`} onChange={() => toggleReminder(i.reminder!, i.date)} />
+            ) : (
+              <span className="glyph" aria-hidden><ItemIcon item={i} size={14} /></span>
+            )}
+            <button className="txt" onClick={() => onItem(i)}>
+              <span className="t truncate">{i.title}</span>
+              <span className="m">
+                {tab !== "today" && `${relDays(parseYmd(i.date))} · `}
+                {i.time ? fmtTime(i.time, s.hour12) : i.holiday ? regionsOf(i.holiday) : i.label}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      {tab === "today" && todays.length > 6 && <span className="xs muted">+{todays.length - 6} more today</span>}
+      <button className="btn sm" style={{ alignSelf: "flex-start", marginTop: "auto" }} onClick={() => (tab === "reminders" ? ui.editReminder(null, ymd(now)) : ui.editTask(null, ymd(now)))}><Plus size={15} /> Add {tab === "reminders" ? "reminder" : "task"}</button>
     </section>
   );
 }
@@ -151,19 +258,22 @@ function WorldTrio() {
   const now = useNow(60000);
   const list = s.worldClocks.slice(0, 3);
   return (
-    <section aria-labelledby="h-world">
-      <SecHead title="Around the world" id="h-world" more="World clock" onMore={() => ui.go("world")} />
+    <section className="panel" aria-labelledby="h-world">
+      <div className="panel-head">
+        <h2 id="h-world">World clock</h2>
+        <button className="link" onClick={() => ui.go("world")}>Edit <ArrowRight size={14} /></button>
+      </div>
       {list.length === 0 ? (
         <p className="note-state">No cities yet. Add some on the World clock page.</p>
       ) : (
-        <div className="clock-row">
+        <div className="clock-row" style={{ margin: "auto 0" }}>
           {list.map((c) => {
             const night = isNightIn(c.tz, now);
             return (
               <button key={c.tz + c.label} onClick={() => ui.go("world")} aria-label={`${c.label}: ${fmtZone(now, c.tz, s.hour12)}, ${diffLabel(c.tz, LOCAL_TZ, now)}`}>
-                <AnalogClock tz={c.tz} now={now} size={92} night={night} label={c.label} />
-                <span className="strong truncate" style={{ maxWidth: "100%" }}>{c.label}</span>
-                <span className="display num" style={{ fontSize: 18, lineHeight: 1 }}>{fmtZone(now, c.tz, s.hour12)}</span>
+                <AnalogClock tz={c.tz} now={now} size={88} night={night} label={c.label} />
+                <span className="city truncate" style={{ marginTop: 6 }}>{c.label}</span>
+                <span className="time">{fmtZone(now, c.tz, s.hour12)}</span>
                 <span className="xs muted">{diffLabel(c.tz, LOCAL_TZ, now)}</span>
               </button>
             );
@@ -174,63 +284,7 @@ function WorldTrio() {
   );
 }
 
-function Thumb({ n, eager }: { n: NewsItem; eager?: boolean }) {
-  const [bad, setBad] = useState(false);
-  return (
-    <div className="thumb-wrap">
-      {n.image && !bad ? (
-        <img className="thumb" src={n.image} alt="" loading={eager ? "eager" : "lazy"} referrerPolicy="no-referrer" onError={() => setBad(true)} />
-      ) : (
-        <div className="thumb none" aria-hidden>{(n.source || "News").slice(0, 18)}</div>
-      )}
-    </div>
-  );
-}
-export { Thumb };
-
-function NewsBlock() {
-  const ui = useUi();
-  const cat = newsCategory("india")!;
-  const { data, loading, error, updatedAt, refresh } = useNews(cat.id, cat.feeds);
-  const lead = data?.find((n) => n.image) || data?.[0];
-  const rest = (data || []).filter((n) => n !== lead).slice(0, 4);
-  return (
-    <section aria-labelledby="h-news" style={{ marginTop: 36, paddingTop: 28, borderTop: "1px solid var(--line)" }}>
-      <SecHead title="In the news" id="h-news" more="All news" onMore={() => ui.go("news")}>
-        <span className="xs muted" style={{ marginRight: "auto", marginLeft: 12 }}>{updatedAt ? <><span className="live-dot" /> India · updated {timeAgo(updatedAt)}</> : ""}</span>
-      </SecHead>
-      {loading && !data && <div className="cols2"><div className="skeleton" style={{ height: 220 }} /><div className="stack"><div className="skeleton" style={{ height: 60 }} /><div className="skeleton" style={{ height: 60 }} /><div className="skeleton" style={{ height: 60 }} /></div></div>}
-      {!data && !loading && (
-        <p className="note-state" role="alert">News is temporarily unavailable{error ? ` (${error})` : ""}. <button className="btn sm" onClick={refresh}>Try again</button></p>
-      )}
-      {lead && (
-        <div className="cols2" style={{ gap: 32 }}>
-          <button className="lead" style={{ gridTemplateColumns: "minmax(0,1fr)", gap: 14 }} onClick={() => ui.readArticle(lead.id)}>
-            <Thumb n={lead} eager />
-            <div>
-              <div className="meta"><span className="src">{lead.source}</span>{lead.pubDate && <span>{timeAgo(lead.pubDate)}</span>}</div>
-              <h3 style={{ marginTop: 6, fontSize: 26 }}>{lead.title}</h3>
-              {lead.summary && <p className="muted" style={{ marginTop: 8, color: "var(--ink-2)" }}>{lead.summary.slice(0, 200)}{lead.summary.length > 200 ? "…" : ""}</p>}
-            </div>
-          </button>
-          <div>
-            {rest.map((n) => (
-              <button key={n.id} className="story compact" style={{ width: "100%" }} onClick={() => ui.readArticle(n.id)}>
-                <Thumb n={n} />
-                <div>
-                  <h3>{n.title}</h3>
-                  <div className="meta" style={{ marginTop: 4 }}><span className="src">{n.source}</span>{n.pubDate && <span>{timeAgo(n.pubDate)}</span>}</div>
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-    </section>
-  );
-}
-
-function PanchangamStrip() {
+function PanchangamCard() {
   const ui = useUi();
   const s = useSettings();
   const now = useNow(60000);
@@ -244,28 +298,92 @@ function PanchangamStrip() {
     }
   }, [s.location, key]);
   const t = (d: Date | null) => fmtInZone(d, s.location.tz, s.hour12);
+  const span = (r: [Date, Date] | null) => (r ? `${t(r[0])} – ${t(r[1])}` : "—");
   return (
-    <section aria-labelledby="h-pan" style={{ marginTop: 36 }}>
-      <SecHead title="Today's Panchangam" id="h-pan" more="Astrology" onMore={() => ui.go("astrology")}>
-        <span className="xs muted" style={{ marginRight: "auto", marginLeft: 12 }}>{placeCity(s.location)} · traditional almanac</span>
-      </SecHead>
+    <section className="panel" aria-labelledby="h-pan">
+      <div className="panel-head">
+        <h2 id="h-pan">Panchangam</h2>
+        <button className="link" onClick={() => ui.go("astrology")}>{fmt(parseYmd(key), { day: "numeric", month: "short" })} <ArrowRight size={14} /></button>
+      </div>
       {!p ? (
         <p className="note-state">The Panchangam can't be calculated for this location.</p>
       ) : (
-        <div className="card strip">
-          <span className="moon-glow"><MoonDisc elongation={p.moon.elongation} size={64} /></span>
-          <div><div className="k">Tithi</div><div className="v">{p.tithi.paksha} {p.tithi.name}</div><div className="xs muted">till {t(p.tithi.endsAt)}</div></div>
-          <div><div className="k">Nakshatra</div><div className="v">{p.nakshatra.name}</div><div className="xs muted">till {t(p.nakshatra.endsAt)}</div></div>
-          <div><div className="k">Sunrise · Sunset</div><div className="v num">{t(p.sunrise)} · {t(p.sunset)}</div><div className="xs muted">{p.moon.phaseName}</div></div>
-          <div><div className="k">Rahu Kalam</div><div className="v num">{p.rahuKalam ? `${t(p.rahuKalam[0])} – ${t(p.rahuKalam[1])}` : "—"}</div><div className="xs muted">avoided for new starts</div></div>
-          <div><div className="k">Tamil date</div><div className="v">{p.tamilMonth}{p.tamilDay ? ` ${p.tamilDay}` : ""}</div><div className="xs muted">{p.yoga.name} yoga</div></div>
-        </div>
+        <>
+          <div className="pan-top">
+            <MoonDisc elongation={p.moon.elongation} size={62} />
+            <div style={{ minWidth: 0 }}>
+              <div className="a">{p.tithi.paksha} {p.tithi.name}</div>
+              <div className="b">{p.nakshatra.name} Nakshatra</div>
+              <div className="xs muted">{p.tamilMonth}{p.tamilDay ? ` ${p.tamilDay}` : ""} · {placeCity(s.location)}</div>
+            </div>
+          </div>
+          <ul className="pan-rows">
+            <li><OctagonAlert size={16} /> Rahu Kalam <span className="v">{span(p.rahuKalam)}</span></li>
+            <li><TriangleAlert size={16} /> Yamagandam <span className="v">{span(p.yamagandam)}</span></li>
+            <li><Hourglass size={16} /> Kuligai <span className="v">{span(p.kuligai)}</span></li>
+          </ul>
+        </>
       )}
     </section>
   );
 }
 
-function Footnotes() {
+const NEWS_TABS = ["india", "tamilnadu", "world", "technology", "business", "sports"];
+function NewsCard() {
+  const ui = useUi();
+  const [id, setId] = useState(NEWS_TABS[0]);
+  const cat = newsCategory(id)!;
+  const { data, loading, error, updatedAt, refresh } = useNews(cat.id, cat.feeds);
+  const [badLead, setBadLead] = useState<string | null>(null);
+  const lead = data?.find((n) => n.image && n.id !== badLead) || data?.[0];
+  const rest = (data || []).filter((n) => n !== lead).slice(0, 2);
+  return (
+    <section className="panel" aria-labelledby="h-news">
+      <h2 id="h-news" className="sr">News</h2>
+      <div className="row" style={{ alignItems: "flex-start", gap: 6 }}>
+        <div className="tabs2 grow" role="tablist" aria-label="News categories">
+          {NEWS_TABS.map((t) => (
+            <button key={t} role="tab" aria-selected={t === id} onClick={() => setId(t)}>{t === "india" ? "Top stories" : newsCategory(t)!.label}</button>
+          ))}
+        </div>
+        <button className="nav-btn" style={{ width: 36, height: 36, flex: "none" }} onClick={() => ui.go("news")} aria-label="Open the News page"><ArrowUpRight size={17} /></button>
+      </div>
+      {loading && !data && <div className="skeleton" style={{ height: 170, borderRadius: 14 }} role="status" aria-label="Loading news" />}
+      {!data && !loading && (
+        <p className="note-state" role="alert">News is temporarily unavailable{error ? ` (${error})` : ""}. <button className="btn sm" onClick={refresh}>Try again</button></p>
+      )}
+      {data && data.length === 0 && <p className="note-state">No stories in this category right now.</p>}
+      {lead && (
+        <>
+          <button className="news-lead" onClick={() => ui.readArticle(lead.id)} aria-label={`Read: ${lead.title}`}>
+            {lead.image && lead.id !== badLead && <img src={lead.image} alt="" referrerPolicy="no-referrer" onError={() => setBadLead(lead.id)} />}
+            <h3>{lead.title}</h3>
+          </button>
+          <div className="news-under">
+            {lead.summary ? <p>{lead.summary}</p> : <span />}
+            <button className="round-go" onClick={() => ui.readArticle(lead.id)} aria-label="Read this story"><ArrowUpRight size={19} /></button>
+            <div className="meta"><span className="src">{lead.source}</span>{lead.pubDate && <span>· {timeAgo(lead.pubDate)}</span>}</div>
+          </div>
+          {rest.length > 0 && (
+            <ul className="news-more">
+              {rest.map((n) => (
+                <li key={n.id}>
+                  <button onClick={() => ui.readArticle(n.id)}>
+                    {n.title}
+                    <span className="meta"><span className="src">{n.source}</span>{n.pubDate && <span>· {timeAgo(n.pubDate)}</span>}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {updatedAt ? <span className="xs muted" style={{ marginTop: 8 }}>Feed updated {timeAgo(updatedAt)}</span> : null}
+        </>
+      )}
+    </section>
+  );
+}
+
+function Extras() {
   const ui = useUi();
   const s = useSettings();
   const { tasks, notes } = useData();
@@ -274,22 +392,23 @@ function Footnotes() {
   const days = dayDiff(today(), pay);
   const done = tasks.filter((t) => (t.recurrence.freq === "none" ? t.status === "done" : t.doneDates.length > 0)).length;
   const pct = tasks.length ? Math.round((done / tasks.length) * 100) : 0;
+  const written = notes.filter((n) => n.content.trim()).length;
   if (!s.widgets.salary && !s.widgets.stats && !s.widgets.zodiac) return null;
   return (
-    <section className="band" aria-label="More for today" style={{ marginTop: 32 }}>
+    <section className="panel trio dash-c" aria-label="More for today">
       {s.widgets.salary && (
         <div>
           <div className="eyebrow">Salary day</div>
-          <div className="display" style={{ fontSize: 24, marginTop: 4 }}>{days === 0 ? "Today!" : <><span className="tick" key={days}>{days}</span> day{days === 1 ? "" : "s"} to go</>}</div>
-          <div className="small muted">{days === 0 ? "Enjoy your hard-earned reward." : `Next payday is ${fmt(pay, { weekday: "long", day: "numeric", month: "long" })}.`}</div>
+          <div className="big">{days === 0 ? "Today" : <><span className="tick num" key={days}>{days}</span> day{days === 1 ? "" : "s"} to go</>}</div>
+          <div className="small muted">{days === 0 ? "Payday is today." : `Next payday is ${fmt(pay, { weekday: "long", day: "numeric", month: "long" })}.`}</div>
         </div>
       )}
       {s.widgets.stats && (
         <div>
           <div className="eyebrow">Your progress</div>
-          <div className="display" style={{ fontSize: 24, marginTop: 4 }}>{done} of {tasks.length} tasks done</div>
+          <div className="big num">{done} of {tasks.length} tasks done</div>
           <div className="meter" style={{ margin: "8px 0 6px" }} role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label="Tasks completed"><i style={{ width: `${pct}%` }} /></div>
-          <div className="small muted">{notes.filter((n) => n.content.trim()).length} note{notes.length === 1 ? "" : "s"} written</div>
+          <div className="small muted">{written} note{written === 1 ? "" : "s"} written</div>
         </div>
       )}
       {s.widgets.zodiac && (
@@ -302,7 +421,7 @@ function Footnotes() {
           ) : (
             <p className="small muted" style={{ marginTop: 6 }}>Pick your zodiac sign to get a daily reading.</p>
           )}
-          <button className="more" style={{ background: "none", border: 0, padding: 0, color: "var(--accent)", fontWeight: 600, cursor: "pointer", fontSize: 13 }} onClick={() => ui.go("astrology")}>{s.zodiac ? "Read more" : "Choose sign"} →</button>
+          <button className="link" style={{ color: "var(--accent)" }} onClick={() => ui.go("astrology")}>{s.zodiac ? "Read more" : "Choose sign"} <ArrowRight size={14} /></button>
         </div>
       )}
     </section>
@@ -313,145 +432,88 @@ export function Dashboard() {
   const ui = useUi();
   const data = useData();
   const s = useSettings();
-  const onItem = useItemClick();
   const now = today();
   const [month, setMonth] = useState(now);
-  const [list, setList] = useState<"tasks" | "reminders">("tasks");
   const sky = useSky(s);
   const wmap = useMemo(() => new Map((s.layers.weather && sky.weather.data ? sky.weather.data.daily : []).map((d) => [d.date, d])), [sky.weather.data, s.layers.weather]);
   const todays = itemsOn(now, data, s);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const ahead = useMemo(() => itemsBetween(addDays(now, 1), 90, data, s).flatMap((d) => d.items), [data, s, ymd(now)]);
   const all = [...todays, ...ahead];
   const upTasks = all.filter((i) => i.task && !i.done).slice(0, 5);
   const upRem = all.filter((i) => i.reminder && !i.done).slice(0, 5);
-  const upHol = all.filter((i) => i.holiday && i.holiday.kind !== "bank" && i.holiday.kind !== "observance").slice(0, 5);
-  const satToday = officeSaturday(now);
+  const upHol = all.filter((i) => i.holiday && i.holiday.kind !== "bank" && i.holiday.kind !== "observance").slice(0, 4);
   const w = s.widgets;
-  const sun = useMemo(() => {
-    try {
-      return sunTimes(s.location, now.getFullYear(), now.getMonth() + 1, now.getDate());
-    } catch {
-      return null;
-    }
-  }, [s.location, ymd(now)]);
+  const onMonth = month.getMonth() === now.getMonth() && month.getFullYear() === now.getFullYear();
+  const openView = (v: ViewName) => {
+    if (v === "month") return;
+    ui.setView(v);
+    ui.setFocus(onMonth ? now : month);
+    ui.go("calendar");
+  };
 
   return (
     <div className="page">
-      <Masthead />
+      <Hello />
 
-      <div className="dash2">
-        <section aria-labelledby="h-cal" style={{ minWidth: 0 }}>
-          <div className="sec-head">
-            <div className="row">
-              <h2 id="h-cal" className="tick" key={ymd(month).slice(0, 7)} style={{ minWidth: 210 }}>{fmtMonthYear(month)}</h2>
-              <button className="btn icon sm" aria-label="Previous month" onClick={() => setMonth(addMonths(month, -1))}><ChevronLeft size={15} /></button>
-              <button className="btn sm" onClick={() => setMonth(now)} disabled={month.getMonth() === now.getMonth() && month.getFullYear() === now.getFullYear()}>Today</button>
-              <button className="btn icon sm" aria-label="Next month" onClick={() => setMonth(addMonths(month, 1))}><ChevronRight size={15} /></button>
-            </div>
-            <button className="more" onClick={() => (ui.setFocus(month), ui.go("calendar"))}>Full calendar <ArrowRight size={13} /></button>
+      <div className="dash-a">
+        <section className="panel cal-card a-cal" aria-labelledby="h-cal">
+          <div className="cal-bar">
+            <button className="nav-btn" aria-label="Previous month" onClick={() => setMonth(addMonths(month, -1))}><ChevronLeft size={19} /></button>
+            <button className="nav-btn" aria-label="Next month" onClick={() => setMonth(addMonths(month, 1))}><ChevronRight size={19} /></button>
+            <h2 id="h-cal" className="tick" key={ymd(month).slice(0, 7)} aria-live="polite">{fmtMonthYear(month)}</h2>
+            <span className="spacer" />
+            <Seg<ViewName> value="month" onChange={openView} label="Calendar view" options={[{ value: "month", label: "Month" }, { value: "week", label: "Week" }, { value: "day", label: "Day" }, { value: "agenda", label: "Agenda" }]} />
+            <button className="nav-btn" aria-label="Go to today" title="Go to today" disabled={onMonth} onClick={() => setMonth(now)}><CalendarCheck2 size={18} /></button>
+            <button className="nav-btn" aria-label="Open the full calendar" title="Open the full calendar" onClick={() => (ui.setFocus(month), ui.go("calendar"))}><Maximize2 size={17} /></button>
           </div>
-          <MonthView focus={month} selected={null} onSelect={ui.openDay} data={data} s={s} weather={wmap} max={2} />
+          <MonthView focus={month} selected={null} onSelect={ui.openDay} data={data} s={s} weather={wmap} max={1} />
           <div className="legend">
-            <span><span className="daynum today" style={{ background: "var(--today)", color: "var(--today-ink)", width: "auto", padding: "0 8px", borderRadius: 12, animation: "none" }}>{now.getDate()}</span> Today</span>
-            <span><SatTag status="working" /> Working Saturday</span>
-            <span><SatTag status="off" /> Non-working Saturday</span>
-            <span className="muted">Select any date to see everything on that day.</span>
+            <span><span className="key-today num">{now.getDate()}</span> Today</span>
+            <span><SatTag status="working" size="cell" /> office open</span>
+            <span><SatTag status="off" size="cell" /> office closed</span>
+            <span className="muted">Select a date to see everything on that day.</span>
           </div>
         </section>
 
-        <aside className="rail" aria-label="Today at a glance">
-          <section aria-labelledby="h-sat">
-            <SecHead title="Office Saturdays" id="h-sat"><Lock size={13} className="muted" aria-label="Fixed schedule" /></SecHead>
-            <div className="sat-duo">
-              {(["working", "off"] as const).map((st) => {
-                const d = nextOfficeSaturday(st, now);
-                const n = dayDiff(now, d);
-                return (
-                  <button key={st} className={"sat-row " + (st === "off" ? "sat-off" : "sat-working")} onClick={() => ui.openDay(d)}>
-                    <span className="eyebrow" style={{ gridColumn: "1 / -1" }}>Next {st === "working" ? "working" : "non-working"} Saturday</span>
-                    <span>
-                      <span className="when" style={{ display: "block" }}>{fmt(d, { day: "numeric", month: "long" })}</span>
-                      <span className="small muted">{n === 0 ? "Today" : <>in <span className="tick" key={n}>{n}</span> day{n === 1 ? "" : "s"}</>}</span>
-                    </span>
-                    <SatTag status={st} size="lg" />
-                  </button>
-                );
-              })}
+        {w.weather !== false && <WeatherCard />}
+
+        <div className="a-side">
+          <SaturdayCards />
+          <section className="panel" aria-labelledby="h-hol" style={{ flex: 1 }}>
+            <div className="panel-head">
+              <h2 id="h-hol">Upcoming holidays</h2>
+              <button className="link" onClick={() => ui.go("holidays")}>View all <ArrowRight size={14} /></button>
             </div>
-          </section>
-
-          <section aria-labelledby="h-today">
-            <SecHead title="Today" id="h-today" more="Open day" onMore={() => ui.openDay(now)} />
-            <div className="agenda">
-              {satToday && <div><SatTag status={satToday} size="lg" long /></div>}
-              {todays.length === 0 && <p className="note-state" style={{ padding: 0 }}>Nothing scheduled today.</p>}
-              {todays.slice(0, 6).map((i) => <ItemChip key={i.key} item={i} onClick={onItem} hour12={s.hour12} />)}
-              {todays.length > 6 && <span className="xs muted">+{todays.length - 6} more</span>}
-              {sun?.sunrise && sun.sunset && <div className="xs muted num" style={{ marginTop: 4 }}>Sunrise {fmtInZone(sun.sunrise, s.location.tz, s.hour12)} · Sunset {fmtInZone(sun.sunset, s.location.tz, s.hour12)}</div>}
-              <button className="btn sm" style={{ alignSelf: "flex-start", marginTop: 4 }} onClick={() => ui.editTask(null, ymd(now))}><Plus size={14} /> Add to today</button>
-            </div>
-          </section>
-
-          {w.quote && <Thought />}
-        </aside>
-      </div>
-
-      <div className="band">
-        <section aria-labelledby="h-hol">
-          <SecHead title="Coming holidays" id="h-hol" more="All holidays" onMore={() => ui.go("holidays")} />
-          {upHol.length === 0 ? (
-            <p className="note-state">No holidays in the next 90 days for the categories you've switched on.</p>
-          ) : (
-            <ol className="tl">
-              {upHol.map((i) => {
-                const n = dayDiff(now, parseYmd(i.date));
-                return (
+            {upHol.length === 0 ? (
+              <p className="note-state">No holidays in the next 90 days for the categories you've switched on.</p>
+            ) : (
+              <ul className="hol-list">
+                {upHol.map((i) => (
                   <li key={i.key} style={tone(i.tone)}>
                     <button onClick={() => ui.openDay(parseYmd(i.date))}>
-                      <span className="strong" style={{ display: "block" }}>{i.title}</span>
-                      <span className="small muted">{fmt(parseYmd(i.date), { weekday: "short", day: "numeric", month: "short" })} · {n === 0 ? "today" : n === 1 ? "tomorrow" : `in ${n} days`} · {regionsOf(i.holiday!)}</span>
+                      <span className="d num">{fmt(parseYmd(i.date), { day: "numeric", month: "short" })}</span>
+                      <span style={{ minWidth: 0 }}>
+                        <span className="t" style={{ display: "block" }}>{i.title}</span>
+                        <span className="r"><span className="sw" aria-hidden /> <span className="truncate">{regionsOf(i.holiday!)}</span></span>
+                      </span>
                     </button>
                   </li>
-                );
-              })}
-            </ol>
-          )}
-        </section>
-
-        <section aria-labelledby="h-todo">
-          <SecHead title="To do" id="h-todo" more="Open" onMore={() => ui.go(list)}>
-            <span style={{ marginRight: "auto", marginLeft: 12 }}><Seg value={list} onChange={setList} label="Show tasks or reminders" options={[{ value: "tasks", label: "Tasks" }, { value: "reminders", label: "Reminders" }]} /></span>
-          </SecHead>
-          <ul className="plain-list" key={list}>
-            {list === "tasks" && upTasks.length === 0 && <li className="note-state" style={{ border: 0 }}>No open tasks. Select a date to add one.</li>}
-            {list === "tasks" && upTasks.map((i) => (
-              <li key={i.key + i.date}>
-                <Check checked={false} label={`Mark "${i.title}" complete`} onChange={() => toggleTask(i.task!, i.date)} />
-                <button className="grow" style={{ border: 0, background: "none", textAlign: "left", padding: 0, cursor: "pointer", minWidth: 0 }} onClick={() => ui.editTask(i.task!)}>
-                  <span className="strong truncate" style={{ display: "block" }}>{i.title}</span>
-                  <span className="small muted">{relDays(parseYmd(i.date))} · {i.task!.category} · {i.task!.priority} priority</span>
-                </button>
-              </li>
-            ))}
-            {list === "reminders" && upRem.length === 0 && <li className="note-state" style={{ border: 0 }}>No reminders set.</li>}
-            {list === "reminders" && upRem.map((i) => (
-              <li key={i.key + i.date}>
-                <Check checked={false} label={`Mark "${i.title}" done`} onChange={() => toggleReminder(i.reminder!, i.date)} />
-                <button className="grow" style={{ border: 0, background: "none", textAlign: "left", padding: 0, cursor: "pointer", minWidth: 0 }} onClick={() => ui.editReminder(i.reminder!)}>
-                  <span className="strong truncate" style={{ display: "block" }}>{i.title}</span>
-                  <span className="small muted"><Bell size={11} style={{ verticalAlign: "-1px" }} /> {relDays(parseYmd(i.date))} · {fmtTime(i.reminder!.time, s.hour12)}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
-
-        {w.worldclock && <WorldTrio />}
+                ))}
+              </ul>
+            )}
+          </section>
+        </div>
       </div>
 
-      {w.news && <NewsBlock />}
-      {w.panchangam && <PanchangamStrip />}
-      <Footnotes />
+      <div className="dash-b">
+        <Schedule todays={todays} upTasks={upTasks} upRem={upRem} />
+        {w.worldclock && <WorldTrio />}
+        {w.panchangam && <PanchangamCard />}
+        {w.news && <NewsCard />}
+      </div>
+
+      <Extras />
     </div>
   );
 }

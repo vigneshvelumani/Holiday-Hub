@@ -93,25 +93,33 @@ eq("good friday 2027", find(2027, "Good Friday"), ["2027-03-26"]);
 eq("easter 2025", find(2025, "Easter"), ["2025-04-20"]);
 // astronomically computed: compared with published dates (reported, a ±1 day miss is a soft warning)
 const published: [number, string, string][] = [
-  [2026, "Maha Shivaratri", "2026-02-15"], [2026, "Holi", "2026-03-04"], [2026, "Rama Navami", "2026-03-26"],
+  [2026, "Maha Shivaratri", "2026-02-15"], [2026, "Rama Navami", "2026-03-26"],
   [2026, "Mahavir", "2026-03-31"], [2026, "Buddha Purnima", "2026-05-01"], [2026, "Janmashtami", "2026-09-04"],
   [2026, "Ganesh Chaturthi", "2026-09-14"], [2026, "Ayudha", "2026-10-19"], [2026, "Vijaya Dashami", "2026-10-20"],
   [2026, "Diwali", "2026-11-08"], [2026, "Guru Nanak", "2026-11-24"], [2026, "Eid ul-Fitr", "2026-03-21"],
   [2026, "Bakrid", "2026-05-28"], [2026, "Muharram", "2026-06-26"], [2026, "Milad", "2026-08-26"],
   [2026, "Tamil New Year", "2026-04-14"], [2026, "Thaipusam", "2026-02-01"], [2026, "Ugadi", "2026-03-19"],
-  [2025, "Maha Shivaratri", "2025-02-26"], [2025, "Holi", "2025-03-14"], [2025, "Rama Navami", "2025-04-06"],
+  [2025, "Maha Shivaratri", "2025-02-26"], [2025, "Rama Navami", "2025-04-06"],
   [2025, "Ganesh Chaturthi", "2025-08-27"], [2025, "Vijaya Dashami", "2025-10-02"], [2025, "Diwali", "2025-10-20"],
   [2025, "Guru Nanak", "2025-11-05"], [2025, "Thaipusam", "2025-02-11"], [2025, "Pongal (Thai", "2025-01-14"],
   [2025, "Tamil New Year", "2025-04-14"], [2025, "Buddha Purnima", "2025-05-12"], [2025, "Mahavir", "2025-04-10"],
-  [2024, "Pongal (Thai", "2024-01-15"], [2024, "Diwali", "2024-10-31"], [2024, "Holi", "2024-03-25"],
+  [2024, "Pongal (Thai", "2024-01-15"], [2024, "Diwali", "2024-10-31"],
   [2024, "Vijaya Dashami", "2024-10-12"], [2024, "Ganesh Chaturthi", "2024-09-07"], [2024, "Janmashtami", "2024-08-26"],
-  [2027, "Diwali", "2027-10-29"], [2027, "Holi", "2027-03-22"], [2027, "Pongal (Thai", "2027-01-15"],
+  [2027, "Diwali", "2027-10-29"], [2027, "Pongal (Thai", "2027-01-15"],
 ];
 for (const [y, name, want] of published) {
   const got = find(y, name);
   if (got.length === 1 && got[0] === want) pass++;
   else soft.push(`${y} ${name}: computed ${got.join(",") || "none"}, published ${want}`);
 }
+// Holi: the day after Holika Dahan, which avoids Bhadra (Vishti karana). Hard checks against published dates.
+// 2023 and 2026 are the years where Bhadra pushes Holika Dahan to the second evening; 2022 and 2027 are
+// the look-alikes where it must stay on the first.
+for (const want of ["2022-03-18", "2023-03-08", "2024-03-25", "2025-03-14", "2026-03-04", "2027-03-22", "2028-03-11", "2029-03-01"]) {
+  const y = Number(want.slice(0, 4));
+  eq(`holi ${y}`, find(y, "Holi"), [want]);
+}
+eq("holi is flagged as computed", holidaysForYear(2026).filter((h) => h.name === "Holi").every((h) => !!h.note), true);
 {
   const list = holidaysForYear(2026);
   const keys = list.map((h) => h.date + "|" + h.name.toLowerCase());
@@ -172,6 +180,50 @@ if (fail) process.exit(1);
   ok("same zone is not a mismatch", clockMismatch({ name: "x", lat: 0, lon: 0, tz: here }, at) === false);
   ok("other zone is a mismatch", clockMismatch({ name: "x", lat: 0, lon: 0, tz: tzOffset(here, at) === 600 ? "Asia/Kolkata" : "Australia/Brisbane" }, at) === true);
   console.log(`phase 2: ${p2} checks passed`);
+}
+
+// ── time converter + meeting planner (src/lib/timetools.ts) ──
+{
+  const { convertWall, wallToInstant, planDay, slotKind, runs } = await import("../src/lib/timetools.ts");
+  let p3 = 0;
+  const ok = (label: string, cond: boolean) => (cond ? p3++ : (console.log("FAIL " + label), process.exitCode = 1));
+  const iso = (d: Date) => d.toISOString().slice(0, 16);
+
+  const a = convertWall("Asia/Kolkata", "2026-11-11", "20:00", "America/New_York");
+  ok("Chennai 20:00 → New York 09:30 same day", !!a && a.time === "09:30" && a.date === "2026-11-11" && a.dayDiff === 0 && a.status === "ok");
+  const b = convertWall("America/New_York", "2026-03-08", "03:30", "UTC");
+  ok("New York 2026-03-08 03:30 (EDT) → 07:30 UTC", !!b && b.time === "07:30" && b.date === "2026-03-08" && b.status === "ok");
+  const b0 = convertWall("America/New_York", "2026-03-08", "01:30", "UTC");
+  ok("New York 2026-03-08 01:30 (EST) → 06:30 UTC", !!b0 && b0.time === "06:30" && b0.status === "ok");
+  const gap = convertWall("America/New_York", "2026-03-08", "02:30", "America/New_York");
+  ok("New York 02:30 in the spring gap → 03:30 EDT, flagged", !!gap && gap.status === "gap" && gap.shiftMin === 60 && gap.time === "03:30" && iso(gap.instant) === "2026-03-08T07:30");
+  const c = convertWall("Europe/London", "2026-06-01", "09:00", "Asia/Kolkata");
+  ok("London 2026-06-01 09:00 (BST) → Kolkata 13:30", !!c && c.time === "13:30" && c.date === "2026-06-01" && c.dayDiff === 0);
+  const amb = wallToInstant("Europe/London", 2026, 10, 25, 1, 30);
+  ok("London 2026-10-25 01:30 happens twice", amb.status === "ambiguous" && iso(amb.instant) === "2026-10-25T00:30" && !!amb.later && iso(amb.later) === "2026-10-25T01:30");
+  const l1 = convertWall("Europe/London", "2026-10-25", "00:30", "Asia/Kolkata");
+  const l2 = convertWall("Europe/London", "2026-10-25", "09:00", "Asia/Kolkata");
+  ok("London 2026-10-25 before / after clocks go back", !!l1 && l1.time === "05:00" && !!l2 && l2.time === "14:30");
+  const nd = convertWall("Asia/Kolkata", "2026-11-11", "20:00", "Australia/Sydney");
+  ok("Chennai 20:00 → Sydney 01:30 next day", !!nd && nd.time === "01:30" && nd.date === "2026-11-12" && nd.dayDiff === 1);
+  const pd = convertWall("Asia/Kolkata", "2026-11-11", "08:00", "America/Los_Angeles");
+  ok("Chennai 08:00 → Los Angeles 18:30 previous day", !!pd && pd.time === "18:30" && pd.date === "2026-11-10" && pd.dayDiff === -1);
+  ok("bad input is rejected", convertWall("UTC", "2026-02-30", "10:00", "UTC") === null && convertWall("UTC", "2026-02-10", "", "UTC") === null);
+
+  ok("slot kinds", slotKind(540) === "work" && slotKind(1020) === "work" && slotKind(1050) === "late" && slotKind(510) === "early" && slotKind(420) === "early" && slotKind(1320) === "night" && slotKind(0) === "night");
+  const zones = ["Asia/Kolkata", "Europe/London", "America/New_York"];
+  const plan = planDay("Asia/Kolkata", "2026-11-11", zones);
+  ok("24 slots on a normal day", plan.slots.length === 24 && iso(plan.slots[0].start) === "2026-11-10T18:30");
+  ok("Kolkata + London + New York: no common working hour in November", plan.common === false && plan.maxCount === 2);
+  ok("…best hours are the two-zone overlaps", JSON.stringify(plan.best.map((i) => plan.slots[i].baseHour)) === "[15,16,17,20,21,22]" && JSON.stringify(runs(plan.best)) === "[[15,17],[20,22]]");
+  ok("…15:00 IST is 09:30 London, 04:30 New York (night)", plan.slots[15].cells[1].startMin === 570 && plan.slots[15].cells[2].startMin === 270 && plan.slots[15].cells[2].kind === "night");
+  const two = planDay("Asia/Kolkata", "2026-11-11", ["Asia/Kolkata", "Europe/London"]);
+  ok("Kolkata + London share 15:00–18:00 IST", two.common && JSON.stringify(two.best) === "[15,16,17]");
+  const ldnNy = planDay("Europe/London", "2026-11-11", ["Europe/London", "America/New_York"]);
+  ok("London + New York share 14:00–18:00 GMT", ldnNy.common && JSON.stringify(ldnNy.best) === "[14,15,16,17]");
+  ok("23-hour day when clocks go forward", planDay("America/New_York", "2026-03-08", ["America/New_York"]).slots.length === 23);
+  ok("25-hour day when clocks go back", planDay("Europe/London", "2026-10-25", ["Europe/London"]).slots.length === 25);
+  console.log(`time tools: ${p3} checks passed`);
 }
 
 // the app modules open a BroadcastChannel, which would keep Node alive

@@ -1,0 +1,104 @@
+/* Time converter + meeting planner (src/components/TimeTools.tsx).
+   Colours come only from the theme tokens, so light and dark both work.
+   State is never colour alone: working hours are bold with a solid underline,
+   shoulder hours have a dotted underline, night has a moon, best columns a tick. */
+
+.tt-card { min-width: 0; }
+.tt-stack { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.tt-stack p { margin: 0; }
+
+/* ── controls ── */
+.tt-controls { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+.tt-controls .tt-zone { grid-column: 1 / -1; }
+.tt-controls .input, .tt-controls .select, .tt-plan-controls .input { width: 100%; min-width: 0; max-width: 100%; }
+.tt-plan-controls { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; }
+.tt-plan-controls .field { flex: 0 1 220px; }
+
+/* ── notes ── */
+.tt-note { display: flex; gap: 8px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line-strong); border-left: 3px solid var(--today); border-radius: var(--radius-sm); font-size: 13px; line-height: 1.45; color: var(--ink); background: var(--surface); }
+.tt-note svg { flex: none; margin-top: 2px; color: var(--today); }
+.tt-link { border: 0; background: none; padding: 0; font: inherit; font-weight: 600; color: var(--accent); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.tt-summary { font-size: 13px; color: var(--ink-2); }
+.tt-summary .num { font-weight: 700; color: var(--ink); }
+
+/* ── result rows (converter, and the planner's selected hour) ── */
+.tt-rows { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+.tt-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 14px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.tt-row:last-child { border-bottom: 0; padding-bottom: 0; }
+.tt-row-src { border-left: 3px solid var(--accent); padding-left: 10px; }
+.tt-row-place { min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; }
+.tt-row-label { font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+.tt-row-zone { flex-basis: 100%; font-size: 12px; color: var(--ink-3); }
+.tt-row-when { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; text-align: right; min-width: 0; }
+.tt-row-time { font-family: var(--display); font-size: 22px; line-height: 1.1; color: var(--ink); white-space: nowrap; }
+.tt-row-time-sm { font-size: 17px; }
+.tt-row-date { font-size: 12px; color: var(--ink-3); display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 4px 6px; }
+
+.tt-tag { display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px; border: 1px solid var(--line-strong); border-radius: 999px; font-size: 11.5px; font-weight: 600; line-height: 1.5; color: var(--ink); white-space: nowrap; }
+.tt-tag-src { border-color: var(--accent); color: var(--accent); }
+.tt-tag-day { border-color: var(--today); }
+.tt-tag-work { background: var(--accent-soft); border-color: var(--accent); }
+.tt-tag-early, .tt-tag-late { border-style: dotted; border-color: var(--ink-3); }
+.tt-tag-night { background: var(--surface-2); color: var(--ink-2); }
+
+/* ── planner ── */
+.tt-verdict { font-size: 14px; color: var(--ink); line-height: 1.45; }
+.tt-verdict svg { vertical-align: -2px; color: var(--accent); }
+
+.tt-legend { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 12px; color: var(--ink-2); }
+.tt-legend li { display: inline-flex; align-items: center; gap: 7px; }
+.tt-swatch { display: inline-block; width: 26px; height: 24px; flex: none; border: 1px solid var(--line); font-size: 11px; text-align: center; }
+.tt-swatch .tt-cell-in, .tt-swatch .tt-hbtn { height: 100%; min-height: 0; flex-direction: row; gap: 1px; }
+
+/* position: relative keeps the visually-hidden (absolutely positioned) cell text inside the scroller, so it cannot widen the page */
+.tt-scroll { position: relative; overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius-sm); max-width: 100%; }
+.tt-scroll:focus-visible { outline-offset: 1px; }
+.tt-grid { border-collapse: separate; border-spacing: 0; width: max-content; min-width: 100%; font-size: 12.5px; font-variant-numeric: tabular-nums; color: var(--ink); }
+.tt-grid th, .tt-grid td { padding: 0; margin: 0; text-align: center; font-weight: 400; border: 0; border-bottom: 1px solid var(--line); text-transform: none; letter-spacing: 0; color: inherit; background: var(--surface); }
+.tt-grid tfoot th, .tt-grid tfoot td { border-bottom: 0; }
+.tt-grid .tt-rowhead { position: sticky; left: 0; z-index: 2; width: 128px; min-width: 128px; max-width: 128px; padding: 6px 10px; text-align: left; font-size: 12.5px; font-weight: 600; color: var(--ink); background: var(--surface); border-right: 1px solid var(--line-strong); }
+.tt-rowhead-label { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tt-rowhead-zone { display: block; font-size: 11px; font-weight: 400; color: var(--ink-3); }
+.tt-hour, .tt-cell, .tt-count-cell { width: 42px; min-width: 42px; }
+.tt-cell, .tt-count-cell { cursor: pointer; }
+
+.tt-hbtn, .tt-cell-in { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; min-height: 42px; line-height: 1.15; box-sizing: border-box; }
+.tt-hbtn { appearance: none; border: 0; border-radius: 0; background: none; padding: 0; margin: 0; font: inherit; font-weight: 600; color: var(--ink); cursor: pointer; }
+.tt-hbtn:hover { background: var(--surface-2); }
+/* two-tone ring so focus shows on plain and on filled (best) headers alike */
+.tt-hbtn:focus-visible, .tt-sel .tt-hbtn:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; box-shadow: inset 0 0 0 4px var(--surface); position: relative; z-index: 1; }
+.tt-sub { display: inline-flex; align-items: center; gap: 2px; min-height: 12px; font-size: 10px; font-weight: 400; line-height: 1.2; }
+.tt-now .tt-sub { font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
+
+.tt-cell-in { border-bottom: 3px solid transparent; }
+.tt-k-work .tt-cell-in { background: var(--accent-soft); color: var(--ink); font-weight: 700; border-bottom: 3px solid var(--accent); }
+.tt-k-early .tt-cell-in, .tt-k-late .tt-cell-in { border-bottom: 3px dotted var(--ink-3); }
+.tt-k-night .tt-cell-in { background: var(--surface-2); color: var(--ink-3); }
+.tt-newday .tt-cell-in { border-left: 2px solid var(--ink); }
+.tt-newday .tt-sub { font-weight: 700; color: var(--ink); }
+
+/* best-overlap columns: filled header with a tick in the count row */
+.tt-best .tt-hbtn { background: var(--accent); color: var(--accent-ink); }
+.tt-best .tt-hbtn:hover { background: var(--accent); text-decoration: underline; }
+.tt-count { display: flex; align-items: center; justify-content: center; gap: 1px; min-height: 28px; font-size: 11px; color: var(--ink-3); }
+.tt-best .tt-count { color: var(--ink); font-weight: 700; }
+
+/* selected column: a frame, not a colour */
+.tt-sel .tt-hbtn, .tt-sel .tt-cell-in, .tt-sel .tt-count { box-shadow: inset 2px 0 0 var(--ink), inset -2px 0 0 var(--ink); }
+.tt-sel .tt-hbtn { box-shadow: inset 2px 0 0 var(--ink), inset -2px 0 0 var(--ink), inset 0 2px 0 var(--ink); }
+.tt-sel .tt-count { box-shadow: inset 2px 0 0 var(--ink), inset -2px 0 0 var(--ink), inset 0 -2px 0 var(--ink); }
+
+.tt-detail-title { margin: 0 0 8px; font-size: 14px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.tt-detail-count { font-weight: 400; color: var(--ink-3); }
+
+@media (max-width: 560px) {
+  .tt-grid .tt-rowhead { width: 78px; min-width: 78px; max-width: 78px; padding: 6px; font-size: 12px; }
+  .tt-hour, .tt-cell, .tt-count-cell { width: 38px; min-width: 38px; }
+  .tt-row { grid-template-columns: minmax(0, 1fr); }
+  .tt-row-when { align-items: flex-start; text-align: left; }
+  .tt-row-date { justify-content: flex-start; }
+  .tt-row-time { white-space: normal; }
+}
+@media (forced-colors: active) {
+  .tt-best .tt-hbtn { outline: 2px solid CanvasText; outline-offset: -4px; }
+}

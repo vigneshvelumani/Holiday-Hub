@@ -8,7 +8,7 @@
 // Computed religious dates carry a note because official notifications can differ by a day.
 
 import { mkDate, nthWeekday, ymd, type Ymd } from "./dates.ts";
-import { CHENNAI, NEW_DELHI, dayForNakshatra, dayForWindow, lunarMonths, shiftYmd, tamilMonthStart, tithiWindow, type DayRule } from "./astro.ts";
+import { CHENNAI, NEW_DELHI, dayForNakshatra, dayForWindow, elongation, lunarMonths, shiftYmd, sunTimes, tamilMonthStart, tithiWindow, type DayRule } from "./astro.ts";
 
 export type HolidayCategory = "international" | "india" | "tamilnadu" | "us" | "bank_govt" | "bank_private";
 export type HolidayKind = "public" | "festival" | "observance" | "bank";
@@ -112,6 +112,56 @@ function lunarDates(y: number, monthIndex: number, tithi: number, rule: DayRule,
   return out;
 }
 
+/**
+ * Holika Dahan evening, by the Dharmasindhu / Nirnayasindhu rule that printed panchangs follow.
+ * The fire is lit at pradosh (after sunset) while Phalguna Purnima prevails, avoiding Bhadra
+ * (Vishti karana — the first half of the Purnima tithi, Moon–Sun elongation 168°–174°).
+ *   1. If Purnima still prevails at pradosh on the following evening, that evening is used:
+ *      Bhadra is always over by then.
+ *   2. Otherwise the first evening is used, lighting the fire once Bhadra ends …
+ *   3. … unless Bhadra runs past the middle of that night AND Purnima lasts at least 3½ prahara
+ *      (7/8 of the daytime) of the next day. Then the fire moves to the next evening, even though
+ *      Pratipada has begun by sunset. If Purnima ends earlier than that, the first night is kept
+ *      and the fire is lit in Bhadra's tail.
+ * Holi (Dhulandi) is the day after.
+ */
+function holikaDahan(y: number): Ymd[] {
+  const place = NEW_DELHI;
+  const sun = (key: Ymd) => {
+    const [yy, mm, dd] = key.split("-").map(Number);
+    return sunTimes(place, yy, mm, dd);
+  };
+  const out: Ymd[] = [];
+  for (const mth of lunarMonths(y)) {
+    if (mth.index !== 11 || mth.adhika) continue;
+    const [start, end] = tithiWindow(mth, 15);
+    // end of Bhadra: elongation reaches 174° (it rises steadily from 168° to 180° across the tithi)
+    let lo = start.getTime();
+    let hi = end.getTime();
+    while (hi - lo > 30000) {
+      const mid = (lo + hi) / 2;
+      if (elongation(new Date(mid)) < 174) lo = mid;
+      else hi = mid;
+    }
+    const bhadraEnd = hi;
+
+    const first = dayForWindow(start, end, "pradosh", place);
+    const next = shiftYmd(first, 1);
+    const a = sun(first);
+    const b = sun(next);
+    let day = first;
+    if (a.sunset && b.sunrise && b.sunset) {
+      const pradoshNext = b.sunset.getTime() + 48 * 60000;
+      const midnight = (a.sunset.getTime() + b.sunrise.getTime()) / 2;
+      const prahara35 = b.sunrise.getTime() + ((b.sunset.getTime() - b.sunrise.getTime()) * 7) / 8;
+      if (pradoshNext >= start.getTime() && pradoshNext < end.getTime()) day = next;
+      else if (bhadraEnd > midnight && end.getTime() >= prahara35) day = next;
+    }
+    out.push(day);
+  }
+  return out;
+}
+
 function build(y: number): Holiday[] {
   const drafts: Draft[] = [];
   const add = (date: Ymd | null | undefined, name: string, description: string, categories: HolidayCategory[], kind: HolidayKind, extra: Partial<Draft> = {}) => {
@@ -184,7 +234,7 @@ function build(y: number): Holiday[] {
       dates.forEach((dt) => add(dt, name, desc, cats, kind, { note: NOTE_ASTRO, bank }));
 
     each(L(10, 29, "midnight"), "Maha Shivaratri", "Night of Shiva — Krishna Chaturdashi of Magha.", ["india"], "public", "both");
-    each(L(11, 15, "pradosh", 1), "Holi", "Festival of colours, the day after Holika Dahan on Phalguna Purnima.", ["india"], "public", "both");
+    each(holikaDahan(y).map((d) => shiftYmd(d, 1)), "Holi", "Festival of colours, the day after Holika Dahan on Phalguna Purnima.", ["india"], "public", "both");
     each(L(0, 1, "sunrise"), "Ugadi / Gudi Padwa (Telugu New Year)", "Lunar new year in the Deccan — Chaitra Shukla Pratipada.", IN, "festival");
     each(L(0, 9, "midday"), "Rama Navami", "Birth of Rama — Chaitra Shukla Navami.", ["india"], "public");
     each(L(0, 13, "sunrise"), "Mahavir Jayanti", "Birth anniversary of Mahavira — Chaitra Shukla Trayodashi.", IN, "public");

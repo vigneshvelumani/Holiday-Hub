@@ -92,3 +92,12 @@ to change the schedule.
 IndexedDB database `almanac-calendar` (internal name kept so existing data is not lost) (tasks, reminders, events, notes, moods,
 birthdays, notifications); localStorage for preferences and short API caches.
 Nothing expires. Data is lost if the visitor clears site data, and is not shared
+
+## Tests
+
+- `npm test` — date, Saturday, holiday, time-zone and feed-parser checks (Node, no browser).
+- `npm run e2e` — builds the site and runs the Playwright suite in your installed Chrome against `vite preview`.
+- `npm run feeds` — fetches the news feeds into `dist/feeds/` the way the deploy workflow does.
+
+Phase 3 (design system, dashboard and calendar redesign, production news feeds, Holi rule) is recorded in
+[docs/PRODUCT_AUDIT.md](docs/PRODUCT_AUDIT.md) and [docs/FINAL_QA_REPORT.md](docs/FINAL_QA_REPORT.md).
