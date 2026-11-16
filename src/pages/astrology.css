@@ -3,7 +3,7 @@
 
 .as-page small { font-size: inherit; }
 .as-gap { margin-top: 16px; }
-.as-grid.two { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 16px; align-items: start; margin-top: 16px; }
+.as-grid.two { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 16px; align-items: stretch; margin-top: 16px; }
 .as-head-note { font-size: 13px; color: var(--ink-3); text-align: right; }
 .as-page .panel-head { flex-wrap: wrap; row-gap: 2px; }
 .as-sub { font-size: 13px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); margin: 18px 0 8px; padding-top: 16px; border-top: 1px solid var(--line); }
@@ -28,6 +28,8 @@
 .as-hbtn.text { padding: 0 14px; }
 .as-hbtn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.18); border-color: rgba(255, 255, 255, 0.6); }
 .as-hbtn:disabled { cursor: default; color: rgba(255, 255, 255, 0.72); border-style: dashed; background: none; }
+.as-hbtn:active:not(:disabled) { transform: scale(0.95); }
+.as-date:hover { border-color: rgba(255, 255, 255, 0.6); }
 .as-date { height: 38px; padding: 0 10px; border-radius: 11px; border: 1px solid rgba(255, 255, 255, 0.3); background: rgba(255, 255, 255, 0.08); color: #fff; font: inherit; font-weight: 700; font-size: 14px; font-variant-numeric: tabular-nums; color-scheme: dark; min-width: 0; }
 .as-hero .loc-chip { height: 38px; border-radius: 11px; padding: 0 14px; font-weight: 700; background: rgba(255, 255, 255, 0.08); border-color: rgba(255, 255, 255, 0.3); }
 .as-hero .loc-chip:hover { background: rgba(255, 255, 255, 0.18); border-color: rgba(255, 255, 255, 0.6); }
@@ -103,6 +105,9 @@
 .as-tick.major { height: 7px; background: var(--ink-3); }
 .as-tick span { position: absolute; top: 9px; left: 0; transform: translateX(-50%); white-space: nowrap; font-size: 12px; font-weight: 600; color: var(--ink-3); }
 .as-now { position: absolute; top: 20px; height: 62px; width: 2px; margin-left: -1px; background: var(--ink); border-radius: 1px; z-index: 2; }
+/* near either end of the day the label hangs inward, so it never leaves the card */
+.as-now.at-start span { left: -1px; transform: none; border-bottom-left-radius: 0; }
+.as-now.at-end span { left: auto; right: -1px; transform: none; border-bottom-right-radius: 0; }
 .as-now span { position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); white-space: nowrap; font-size: 12px; font-weight: 800; color: var(--surface); background: var(--ink); border-radius: 6px; padding: 1px 7px; margin-bottom: 1px; }
 .as-tl-ends { display: flex; justify-content: space-between; gap: 12px; margin: 6px 22px 0; font-size: 13px; font-weight: 700; color: var(--ink-2); }
 .as-tl-note { font-size: 13px; color: var(--ink-3); margin: 8px 22px 0; }
@@ -137,7 +142,7 @@
 .as-phases svg { flex: none; }
 .as-phases span span { display: block; }
 .as-phases .n { font-weight: 800; font-size: 14.5px; }
-.as-phases .w { font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.as-phases .w { font-size: 13px; font-weight: 600; color: var(--ink-2); white-space: nowrap; }
 .as-phases .r { font-size: 13px; color: var(--ink-3); }
 
 /* ── planets ────────────────────────────────────────────────────────────── */
@@ -164,10 +169,12 @@
 .as-table { width: 100%; min-width: 540px; border-collapse: collapse; font-size: 14.5px; }
 .as-table thead th { text-align: left; font-size: 12px; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-3); padding: 0 12px 9px; border-bottom: 1px solid var(--line-strong); white-space: nowrap; }
 .as-table .r { text-align: right; }
-.as-table tbody th, .as-table td { padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: middle; text-align: left; font-weight: 600; }
+.as-table tbody th, .as-table td { padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: middle; text-align: left; font-weight: 600; overflow-wrap: normal; white-space: nowrap; }
 .as-table td.r { text-align: right; font-weight: 800; white-space: nowrap; }
 .as-table tbody tr:last-child th, .as-table tbody tr:last-child td { border-bottom: 0; }
-.as-table tbody th { display: flex; align-items: center; gap: 10px; font-weight: 800; }
+/* the header cell stays a table cell (so its rule lines up with the row); the flex row lives inside it */
+.as-table tbody th { font-weight: 800; }
+.as-table .g { display: flex; align-items: center; gap: 10px; }
 .as-table small { display: block; font-size: 13px; font-weight: 500; color: var(--ink-3); }
 .as-table .abbr { flex: none; width: 30px; height: 26px; display: grid; place-items: center; border-radius: 8px; background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--line); font-size: 12px; font-weight: 800; color: var(--ink-2); }
 .as-table .retro { display: inline-block; padding: 1px 8px; border-radius: 7px; box-shadow: inset 0 0 0 1.5px var(--c-worksat); color: var(--ink); font-weight: 800; font-size: 13px; }
@@ -207,12 +214,15 @@
 /* ── responsive ─────────────────────────────────────────────────────────── */
 @media (min-width: 1700px) { .as-phases { grid-template-columns: repeat(8, minmax(0, 1fr)); } }
 @media (max-width: 1280px) {
+  .as-phases { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .as-hero-main { grid-template-columns: auto minmax(0, 1fr); }
   .as-hero-next { grid-column: 1 / -1; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 32px; padding: 16px 0 0; border-left: 0; border-top: 1px solid rgba(255, 255, 255, 0.2); }
   .as-grid.two, .as-timings, .as-planets { grid-template-columns: minmax(0, 1fr); }
+  .as-grid.two.as-pair { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .as-signs { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 @media (max-width: 900px) {
+  .as-grid.two.as-pair { grid-template-columns: minmax(0, 1fr); }
   .as-hero { padding: 14px 16px 22px; }
   .as-hero-bar .loc-chip { max-width: 100%; }
   .as-datenav { flex-wrap: nowrap; width: 100%; }
@@ -241,7 +251,6 @@
   .as-periods li { grid-template-columns: 28px minmax(0, 1fr); }
   .as-periods .time { grid-column: 2; text-align: left; white-space: normal; }
   .as-periods .time small { display: inline; margin-left: 6px; }
-  .as-phases { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .as-cycle-hint { display: none; }
   .as-signs { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
   .as-signs button { padding: 7px 8px; }
@@ -252,6 +261,11 @@
   .as-overall { font-size: 18px; }
 }
 @media (max-width: 520px) {
+  .as-phases { grid-template-columns: minmax(0, 1fr); }
+  /* the wheel is drawn in a 440-unit box: enlarge its lettering when the box is shown small */
+  .as-wheel-sign { font-size: 13px; transform: translateY(-2px); }
+  .as-wheel-sign-en { font-size: 11px; transform: translateY(1px); }
+  .as-wheel-planet text { font-size: 14px; }
   .as-signs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .as-signs .dt { white-space: nowrap; }
 }

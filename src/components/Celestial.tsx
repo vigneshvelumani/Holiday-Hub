@@ -28,7 +28,14 @@ export function ZodiacWheel({ planets }: { planets: PlanetPosition[] }) {
   const placed = [...planets].sort((a, b) => a.longitude - b.longitude).map((p, i, arr) => {
     let lane = 0;
     for (let k = i - 1; k >= 0 && p.longitude - arr[k].longitude < 14; k--) lane++;
-    return { p, r: 124 - (lane % 4) * 24 };
+    // the label goes on the side facing away from the nearest other planet
+    let near = 0, gap = 360;
+    for (const o of arr) {
+      if (o === p) continue;
+      const d = ((o.longitude - p.longitude + 540) % 360) - 180;
+      if (Math.abs(d) < gap) (gap = Math.abs(d)), (near = d);
+    }
+    return { p, r: 124 - (lane % 4) * 24, side: near < 0 ? 1 : -1 };
   });
   const summary = planets.map((p) => `${p.name.split(" ")[0]} in ${p.rashi.split(" ")[0]}`).join(", ");
   return (
@@ -52,17 +59,25 @@ export function ZodiacWheel({ planets }: { planets: PlanetPosition[] }) {
       <circle className="as-wheel-ring" cx={C} cy={C} r={R_OUT} />
       <circle className="as-wheel-hub" cx={C} cy={C} r="3" />
       <g className="as-wheel-orbit">
-        {placed.map(({ p, r }) => {
+        {placed.map(({ p, r, side }) => {
           const [x, y] = xy(p.longitude, r);
           const [ex, ey] = xy(p.longitude, R_IN);
           const name = p.name.split(" ")[0];
           const node = name === "Rahu" || name === "Ketu";
           const kind = name === "Sun" ? " sun" : name === "Moon" ? " moon" : node ? " node" : "";
+          // the label sits beside the dot, along the tangent — never on the radius, where the
+          // stepped-in dots of a close group (and their guide lines) are
+          const a = Math.PI - (p.longitude * Math.PI) / 180;
+          const tx = Math.sin(a) * side, ty = Math.cos(a) * side; // +side: toward increasing longitude
+          const big = name === "Sun" || name === "Moon";
+          const off = (big ? 7 : 5) + 6;
+          const anchor = tx > 0.4 ? "start" : tx < -0.4 ? "end" : "middle";
+          const lx = x + tx * off, ly = y + ty * (off + (anchor === "middle" ? 4 : 0)) + 4;
           return (
             <g className={"as-wheel-planet" + kind} key={p.name}>
               <line x1={f(x)} y1={f(y)} x2={f(ex)} y2={f(ey)} />
-              <circle cx={f(x)} cy={f(y)} r={name === "Sun" || name === "Moon" ? 7 : 5} />
-              <text x={f(x)} y={f(y - 11)} textAnchor="middle">{GRAHA_SHORT[name] || name}{p.retrograde && !node ? " R" : ""}</text>
+              <circle cx={f(x)} cy={f(y)} r={big ? 7 : 5} />
+              <text x={f(lx)} y={f(ly)} textAnchor={anchor}>{GRAHA_SHORT[name] || name}{p.retrograde && !node ? " R" : ""}</text>
             </g>
           );
         })}

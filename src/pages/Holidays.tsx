@@ -28,25 +28,40 @@ function inRegion(h: Holiday, r: Region): boolean {
   return r === "all" || h.categories.includes(r as HolidayCategory);
 }
 
-const isFree = (x: Date) => x.getDay() === 0 || officeSaturday(x) === "off";
+/** Sunday or a non-working Saturday. */
+const isWeekendOff = (x: Date) => x.getDay() === 0 || officeSaturday(x) === "off";
 
-/** A day off that touches a weekend (Sunday or a non-working Saturday) makes a long weekend. */
-function longWeekend(h: Holiday): boolean {
+/** Is `x` a day off for someone who gets holiday `h`? Weekends off, plus public holidays in any of the same regions. */
+function isOffFor(x: Date, h: Holiday): boolean {
+  if (isWeekendOff(x)) return true;
+  const key = ymd(x);
+  return holidaysForYear(x.getFullYear()).some((o) => o.kind === "public" && o.date === key && o.categories.some((c) => h.categories.includes(c)));
+}
+
+/**
+ * The unbroken run of days off around a public holiday: the holiday itself, adjoining Sundays / non-working Saturdays,
+ * and neighbouring public holidays in the same region. Null unless the run is at least two days and reaches a weekend.
+ */
+function freeRun(h: Holiday): { days: number; label: string; key: string } | null {
+  if (h.kind !== "public") return null;
   const d = parseYmd(h.date);
-  if (isFree(d)) return false;
-  return isFree(addDays(d, 1)) || isFree(addDays(d, -1));
-}
-
-/** The unbroken run of days off around a long-weekend holiday: the holiday plus adjoining Sundays / non-working Saturdays. */
-function freeRun(h: Holiday): { days: number; label: string } | null {
-  if (!longWeekend(h)) return null;
-  let from = parseYmd(h.date);
-  let to = from;
-  while (isFree(addDays(from, -1))) from = addDays(from, -1);
-  while (isFree(addDays(to, 1))) to = addDays(to, 1);
+  if (isWeekendOff(d)) return null;
+  let from = d;
+  let to = d;
+  let weekend = false;
+  for (let i = 0; i < 14 && isOffFor(addDays(from, -1), h); i++) {
+    from = addDays(from, -1);
+    weekend = weekend || isWeekendOff(from);
+  }
+  for (let i = 0; i < 14 && isOffFor(addDays(to, 1), h); i++) {
+    to = addDays(to, 1);
+    weekend = weekend || isWeekendOff(to);
+  }
+  if (!weekend) return null;
   const wd = (x: Date) => fmt(x, { weekday: "short" });
-  return { days: dayDiff(from, to) + 1, label: `${wd(from)}–${wd(to)}` };
+  return { days: dayDiff(from, to) + 1, label: `${wd(from)}–${wd(to)}`, key: `${ymd(from)}/${ymd(to)}` };
 }
+const LONG_WEEKEND_TITLE = "Long weekend: days off in a row, counting Sundays, non-working Saturdays and neighbouring public holidays in the same region";
 
 const kindShort = (k: HolidayKind) => (k === "public" ? "Day off" : KIND_LABEL[k].split(" (")[0]);
 const relText = (n: number) => (n === 0 ? "Today" : n === 1 ? "Tomorrow" : `in ${n} days`);
@@ -67,11 +82,12 @@ export function HolidaysPage() {
   const [q, setQ] = useState("");
   const list = useMemo(() => holidaysForYear(year), [year]);
   const text = q.trim().toLowerCase();
-  const scoped = list.filter((h) => inRegion(h, region));
+  const scoped = useMemo(() => list.filter((h) => inRegion(h, region)), [list, region]);
   const shown = scoped.filter((h) => (region === "banks" || kinds.has(h.kind)) && (!text || (h.name + " " + h.description + " " + regionsOf(h)).toLowerCase().includes(text)));
   const byMonth = MONTHS.map((_, m) => shown.filter((h) => Number(h.date.slice(5, 7)) === m + 1));
   const todayKey = ymd(now);
   const regionLabel = REGIONS.find((r) => r.value === region)!.label;
+  const nextEyebrow = region === "banks" ? "Next bank closure" : `Next holiday${region !== "all" ? ` · ${regionLabel}` : ""}`;
 
   // upcoming holidays (a real day off or festival) for the chosen region, across the year boundary
   const upcoming = useMemo(() => {
@@ -82,20 +98,35 @@ export function HolidaysPage() {
   const later = upcoming.slice(1);
   const nextDate = next ? parseYmd(next.date) : null;
   const nextIn = nextDate ? dayDiff(now, nextDate) : 0;
-  const nextRun = next && next.kind === "public" ? freeRun(next) : null;
+  const nextRun = next ? freeRun(next) : null;
   const todays = list.length ? holidaysForYear(thisYear).filter((h) => h.date === todayKey && inRegion(h, region) && h.kind !== "bank") : [];
   const msLeft = nextDate ? Math.max(0, nextDate.getTime() - tick.getTime()) : 0;
   const cd = { d: Math.floor(msLeft / 86400000), h: Math.floor((msLeft % 86400000) / 3600000), m: Math.floor((msLeft % 3600000) / 60000) };
 
   const count = (k: HolidayKind) => scoped.filter((h) => h.kind === k).length;
   const remaining = year === thisYear ? scoped.filter((h) => h.kind === "public" && h.date >= todayKey).length : null;
-  const longs = scoped.filter((h) => h.kind === "public" && longWeekend(h)).length;
-  const toggleKind = (k: HolidayKind) => {
-    const n = new Set(kinds);
-    n.has(k) ? n.delete(k) : n.add(k);
-    setKinds(n);
-  };
+  // one long weekend can hold several holidays (Pongal week), so count the distinct runs
+  const longs = useMemo(() => new Set(scoped.map((h) => freeRun(h)?.key).filter(Boolean)).size, [scoped]);
+  const toggleKind = (k: HolidayKind) =>
+    setKinds((prev) => {
+      const n = new Set(prev);
+      if (n.has(k)) n.delete(k);
+      else n.add(k);
+      return n;
+    });
   const filtered = !!text || region !== "all" || kinds.size !== ALL_KINDS.length;
+  const jumpTo = (m: number) => {
+    const el = document.getElementById("hol-m" + m);
+    if (!el) return;
+    const calm = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    el.scrollIntoView({ behavior: calm ? "auto" : "smooth", block: "start" });
+    // move focus too, so the next Tab lands in that month instead of back in the strip
+    document.getElementById("hol-mh" + m)?.focus({ preventScroll: true });
+  };
+  // bank closures have their own vocabulary: closure days and notices, not "public holidays"
+  const bankDays = (cat: HolidayCategory) => new Set(scoped.filter((h) => h.categories.includes(cat)).map((h) => h.date)).size;
+  const bankAllDays = new Set(scoped.map((h) => h.date)).size;
+  const bankLeft = year === thisYear ? new Set(scoped.filter((h) => h.date >= todayKey).map((h) => h.date)).size : null;
   const clearFilters = () => {
     setQ("");
     setRegion("all");
@@ -128,7 +159,7 @@ export function HolidaysPage() {
           <p className="page-sub">
             {fmtLong(now)} · {region === "banks"
               ? "showing bank closures"
-              : `${leftThisYear} public holiday${leftThisYear === 1 ? "" : "s"} still to come in ${thisYear}${region !== "all" ? ` for ${regionLabel}` : ""}`}
+              : `${leftThisYear} public holiday${leftThisYear === 1 ? "" : "s"} still to come in ${thisYear}${region !== "all" ? ` · ${regionLabel}` : ""}`}
           </p>
         </div>
       </div>
@@ -138,27 +169,29 @@ export function HolidaysPage() {
           {next && nextDate ? (
             <>
               <button className="hol-next-date" onClick={() => ui.openDay(nextDate)} aria-label={`${fmtLong(nextDate)} — see that day`}>
-                <span className="wd">{fmt(nextDate, { weekday: "long" })}</span>
                 <span className="dn num">{nextDate.getDate()}</span>
-                <span className="my">{fmt(nextDate, { month: "long", year: "numeric" })}</span>
+                <span className="txt">
+                  <span className="wd">{fmt(nextDate, { weekday: "long" })}</span>
+                  <span className="my">{fmt(nextDate, { month: "long", year: "numeric" })}</span>
+                </span>
               </button>
               <div className="hol-next-body">
                 {todays.length > 0 && (
                   <button className="hol-today" onClick={() => ui.openDay(now)}>Today: {todays.map((h) => h.name).join(", ")}</button>
                 )}
-                <span className="eyebrow">Next holiday{region !== "all" ? ` · ${regionLabel}` : ""}</span>
+                <span className="eyebrow">{nextEyebrow}</span>
                 <h2 id="hol-next-h">{next.name}</h2>
                 <p className="hol-next-reg"><Swatches h={next} /> <span>{regionsOf(next)}</span></p>
                 <p className="hol-next-desc">{next.description}</p>
                 <div className="hol-tags">
                   <span className={"hol-tag" + (next.kind === "public" ? " off" : "")} title={KIND_LABEL[next.kind]}>{kindShort(next.kind)}</span>
-                  {nextRun && <span className="hol-tag lw" title="This day off sits next to a Sunday or a non-working Saturday"><Palmtree size={14} /> Long weekend · {nextRun.days} days off, {nextRun.label}</span>}
+                  {nextRun && <span className="hol-tag lw" title={LONG_WEEKEND_TITLE}><Palmtree size={14} /> Long weekend · {nextRun.days} days off, {nextRun.label}</span>}
                   <span className="hol-tag">{next.note ? "Calculated date" : "Fixed or rule-based date"}</span>
                 </div>
                 {next.note && <p className="hol-next-note">{next.note}</p>}
                 <button className="btn sm" onClick={() => ui.openDay(nextDate)}>See that day <ArrowRight size={14} /></button>
               </div>
-              <div className="hol-count" aria-label={`${nextIn === 1 ? "Tomorrow" : `In ${nextIn} days`}. Starts in ${cd.d} days ${cd.h} hours ${cd.m} minutes.`}>
+              <div className="hol-count" role="img" aria-label={`${nextIn === 1 ? "Tomorrow" : `In ${nextIn} days`}. Starts in ${cd.d} days ${cd.h} hours ${cd.m} minutes.`}>
                 {nextIn === 1 ? (
                   <span className="word">Tomorrow</span>
                 ) : (
@@ -175,8 +208,8 @@ export function HolidaysPage() {
               {todays.length > 0 && (
                 <button className="hol-today" style={{ marginBottom: 10 }} onClick={() => ui.openDay(now)}>Today: {todays.map((h) => h.name).join(", ")}</button>
               )}
-              <span className="eyebrow">Next holiday{region !== "all" ? ` · ${regionLabel}` : ""}</span>
-              <h2 id="hol-next-h" style={{ fontSize: 26, fontWeight: 800, marginTop: 6 }}>No upcoming holiday found</h2>
+              <span className="eyebrow">{nextEyebrow}</span>
+              <h2 id="hol-next-h" style={{ fontSize: 26, fontWeight: 800, marginTop: 6 }}>{region === "banks" ? "No upcoming bank closure found" : "No upcoming holiday found"}</h2>
               <p className="note-state">Nothing is listed for {regionLabel === "All" ? "any region" : regionLabel} between now and the end of {thisYear + 1}.</p>
             </>
           )}
@@ -196,11 +229,12 @@ export function HolidaysPage() {
                 return (
                   <li key={h.id} style={tone(primaryCategory(h))}>
                     <button onClick={() => ui.openDay(d)}>
-                      <span className="d num">{fmt(d, { day: "numeric", month: "short" })}</span>
-                      <span style={{ minWidth: 0 }}>
-                        <span className="t" style={{ display: "block" }}>{h.name}</span>
-                        <span className="r"><span className="sw" aria-hidden /> <span className="truncate">{regionsOf(h)}</span><span className="when num">{relText(dayDiff(now, d))}</span></span>
+                      <span className="d num"><span className="wd">{fmt(d, { weekday: "short" })}</span>{fmt(d, { day: "numeric", month: "short" })}</span>
+                      <span className="b">
+                        <span className="t">{h.name}</span>
+                        <span className="r"><span className="sw" aria-hidden /> <span>{regionsOf(h)}</span></span>
                       </span>
+                      <span className="when num">{relText(dayDiff(now, d))}</span>
                     </button>
                   </li>
                 );
@@ -220,11 +254,10 @@ export function HolidaysPage() {
           </div>
           <div className="search hol-search">
             <Search size={16} />
-            <input className="input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search — Pongal, Thanksgiving, Yoga…" aria-label="Search holidays" />
+            <input className="input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by name or region" aria-label="Search holidays" />
             {q && <button className="hol-search-x" onClick={() => setQ("")} aria-label="Clear search"><X size={16} /></button>}
           </div>
-          <span className="hol-spacer" />
-          <button className="btn" onClick={ui.manageBirthdays}><Cake size={14} /> Birthdays ({birthdays.length})</button>
+          <button className="btn hol-bday" onClick={ui.manageBirthdays}><Cake size={14} /> Birthdays ({birthdays.length})</button>
         </div>
         <div className="hol-bar-row">
           <Seg value={region} onChange={setRegion} label="Country or region" options={REGIONS} />
@@ -245,7 +278,7 @@ export function HolidaysPage() {
             const n = byMonth[i].length;
             const cur = year === thisYear && i === now.getMonth();
             return (
-              <button key={m} className={cur ? "now" : ""} aria-current={cur ? "date" : undefined} disabled={n === 0} onClick={() => document.getElementById("hol-m" + i)?.scrollIntoView({ behavior: "smooth", block: "start" })} aria-label={`${MONTHS[i]}${cur ? " (this month)" : ""}: ${n} listed`} title={`${n} in ${MONTHS[i]}`}>
+              <button key={m} className={cur ? "now" : ""} aria-current={cur ? "date" : undefined} disabled={n === 0} onClick={() => jumpTo(i)} aria-label={`${MONTHS[i]}${cur ? " (this month)" : ""}: ${n} listed`} title={`${n} in ${MONTHS[i]}`}>
                 <span className="m">{m}</span>
                 <span className="c num">{n}</span>
               </button>
@@ -263,8 +296,15 @@ export function HolidaysPage() {
 
           {shown.length === 0 && (
             <div className="hol-empty">
-              <strong>Nothing matches</strong>
-              <p>{scoped.length === 0 ? `No entries for ${regionLabel} in ${year}.` : "Try another region, switch a type back on, or clear the search."}</p>
+              <span className="ico" aria-hidden><Search size={20} /></span>
+              <strong>{text ? `Nothing matches “${q.trim().length > 40 ? q.trim().slice(0, 40) + "…" : q.trim()}”` : "Nothing to show"}</strong>
+              <p>
+                {scoped.length === 0
+                  ? `No entries for ${regionLabel} in ${year}.`
+                  : text
+                    ? `No holiday in ${year}${region !== "all" ? ` (${regionLabel})` : ""} has that in its name, description or region. Check the spelling or clear the search.`
+                    : "Every type is switched off. Turn on public holidays, festivals or observances to see the year."}
+              </p>
               {filtered && <button className="btn sm" onClick={clearFilters}>Clear filters</button>}
             </div>
           )}
@@ -279,14 +319,14 @@ export function HolidaysPage() {
               <section className={"hol-grp" + (current ? " current" : "") + (gone ? " gone" : "")} id={"hol-m" + m} key={m} aria-labelledby={"hol-mh" + m}>
                 <div className="hol-grp-head">
                   {current && <span className="this">This month</span>}
-                  <h3 id={"hol-mh" + m}>{MONTHS[m]}</h3>
-                  <div className="c num">{rows.length} day{rows.length === 1 ? "" : "s"}</div>
+                  <h3 id={"hol-mh" + m} tabIndex={-1}>{MONTHS[m]}</h3>
+                  <div className="c num">{rows.length} listed</div>
                 </div>
                 <ul className="hol-rows">
                   {rows.flatMap((h, idx) => {
                     const d = parseYmd(h.date);
                     const n = dayDiff(now, d);
-                    const run = h.kind === "public" ? freeRun(h) : null;
+                    const run = freeRun(h);
                     const minor = h.kind === "observance" || h.kind === "bank";
                     const row = (
                       <li key={h.id}>
@@ -302,7 +342,7 @@ export function HolidaysPage() {
                           </span>
                           <span className="hol-row-meta">
                             <span className={"hol-tag" + (h.kind === "public" ? " off" : "")}>{kindShort(h.kind)}</span>
-                            {run && <span className="hol-tag lw" title="Long weekend: this day off sits next to a Sunday or a non-working Saturday"><Palmtree size={14} /> <span className="sr">Long weekend: </span>{run.days} days off · {run.label}</span>}
+                            {run && <span className="hol-tag lw" title={LONG_WEEKEND_TITLE}><Palmtree size={14} /> <span className="sr">Long weekend: </span>{run.days} days off · {run.label}</span>}
                             {h.note && <span className="hol-tag calc" title={h.note}><Info size={14} /> Calculated date<span className="sr"> — the official day can differ by one</span></span>}
                             {n >= 0 && n <= 120 && <span className="rel num">{relText(n)}</span>}
                           </span>
@@ -325,12 +365,21 @@ export function HolidaysPage() {
               <h2 id="hol-num-h">{year} in numbers</h2>
               <span className="hol-tl-count">{region === "all" ? "All regions" : regionLabel}</span>
             </div>
+            {region === "banks" ? (
+              <dl className="hol-nums">
+                <div><dt>Closure days</dt><dd className="v num tick" key={"bd" + bankAllDays}>{bankAllDays}</dd><dd className="s">{bankLeft != null ? `${bankLeft} still to come this year` : `in ${year}`}</dd></div>
+                <div><dt>Notices</dt><dd className="v num tick" key={"bn" + scoped.length}>{scoped.length}</dd><dd className="s">public-sector and private lists together</dd></div>
+                <div><dt>Public-sector banks</dt><dd className="v num tick" key={"bg" + bankDays("bank_govt")}>{bankDays("bank_govt")}</dd><dd className="s">closure days</dd></div>
+                <div><dt>Private banks</dt><dd className="v num tick" key={"bp" + bankDays("bank_private")}>{bankDays("bank_private")}</dd><dd className="s">closure days</dd></div>
+              </dl>
+            ) : (
             <dl className="hol-nums">
               <div><dt>Public holidays</dt><dd className="v num tick" key={"p" + count("public")}>{count("public")}</dd><dd className="s">{remaining != null ? `${remaining} still to come this year` : `in ${year}`}</dd></div>
-              <div><dt>Long weekends</dt><dd className="v num tick" key={"l" + longs}>{longs}</dd><dd className="s">a day off next to Sunday or an off-Saturday</dd></div>
+              <div><dt>Long weekends</dt><dd className="v num tick" key={"l" + longs}>{longs}</dd><dd className="s">days off that join a Sunday or an off-Saturday</dd></div>
               <div><dt>Festivals</dt><dd className="v num tick" key={"f" + count("festival")}>{count("festival")}</dd><dd className="s">cultural and religious days</dd></div>
               <div><dt>Observances</dt><dd className="v num tick" key={"o" + count("observance")}>{count("observance")}</dd><dd className="s">awareness days — not a day off</dd></div>
             </dl>
+            )}
           </section>
 
           <section className="panel" aria-labelledby="hol-reg-h">
@@ -352,7 +401,7 @@ export function HolidaysPage() {
                 );
               })}
             </ul>
-            <p className="hol-regions-hint">Select a region to filter the year; select it again to show all.</p>
+            <p className="hol-regions-hint">The coloured squares match the ones beside each holiday. Select a region to filter the year; select it again to show every region.</p>
           </section>
         </aside>
       </div>

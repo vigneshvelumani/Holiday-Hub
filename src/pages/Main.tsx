@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from "react";
-import { AlertCircle, Bell, BellOff, BellRing, CalendarDays, CheckCheck, ChevronDown, ChevronsUp, Clock, Equal, ListChecks, Monitor, Pencil, Plus, Repeat, Search, SlidersHorizontal, Trash2, X } from "lucide-react";
+import { AlertCircle, Bell, BellOff, BellRing, CalendarDays, Check as CheckIcon, CheckCheck, ChevronDown, ChevronsUp, Clock, Equal, ListChecks, Monitor, Pencil, Plus, Repeat, Search, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { addDays, combine, dayDiff, fmt, fmtTime, parseYmd, relDays, today, ymd } from "../lib/dates.ts";
 import { reminderDoneOn, reminderFireTime, taskDoneOn, toggleReminder, toggleTask } from "../lib/items.ts";
 import { notificationPermission, requestNotificationPermission, toast } from "../lib/notify.ts";
@@ -14,6 +14,44 @@ export { HolidaysPage } from "./Holidays.tsx";
 /** "Wed 11 Nov", with the year only when it isn't this one. */
 function shortDate(d: Date, now: Date): string {
   return fmt(d, d.getFullYear() === now.getFullYear() ? { weekday: "short", day: "numeric", month: "short" } : { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+}
+
+/** How long a just-completed row stays in place (ticked and struck through) before it leaves the list. */
+const LEAVE_MS = 520;
+const motionOk = () => typeof window !== "undefined" && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/**
+ * Ticking, reopening or deleting a row can move it to another group or take it out of the list, and the control that
+ * had focus goes with it. Call this just before the change: once the list has settled, focus returns to the same item
+ * if it is still shown, otherwise to the row next to it, otherwise to the selected tab — never to the top of the page.
+ */
+function holdFocus(from: Element | null) {
+  const row = from?.closest<HTMLElement>(".wk-row[data-id]");
+  const list = row?.closest<HTMLElement>(".wk-list");
+  if (!row || !list) return;
+  const rows = [...list.querySelectorAll<HTMLElement>(".wk-row[data-id]:not(.leaving)")];
+  const i = rows.indexOf(row);
+  const ids = [row, rows[i + 1], rows[i - 1]].filter(Boolean).map((r) => r.dataset.id as string);
+  window.setTimeout(() => {
+    const active = document.activeElement;
+    if (active && active !== document.body && active.isConnected) return;
+    for (const id of ids) {
+      const el = list.querySelector<HTMLElement>(`.wk-row[data-id="${CSS.escape(id)}"]:not(.leaving) > .check`);
+      if (el) return el.focus();
+    }
+    list.querySelector<HTMLElement>('.seg button[aria-pressed="true"]')?.focus();
+  }, 60);
+}
+
+/** A completed row on its way out: a still image of the row (ticked, struck through) with nothing to click. */
+function LeavingRow({ id, title, timed }: { id: string; title: string; timed?: string }) {
+  return (
+    <li className={"wk-row done leaving" + (timed != null ? " timed" : "")} data-id={id} aria-hidden="true">
+      {timed != null && <span className="wk-time">{timed}</span>}
+      <span className="check wk-tick"><CheckIcon size={13} strokeWidth={3} /></span>
+      <span className="wk-main"><span className="wk-title">{title}</span></span>
+    </li>
+  );
 }
 
 function Stat({ n, label, icon, name, pressed, alert, onClick }: { n: number; label: string; icon: ReactNode; name: string; pressed: boolean; alert?: boolean; onClick: () => void }) {
@@ -60,6 +98,8 @@ export function TasksPage() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
+  // tasks ticked a moment ago that no longer belong in this tab, with the group they were in
+  const [leaving, setLeaving] = useState<Record<string, TaskGroup>>({});
   const now = today();
   const key = ymd(now);
 
@@ -80,11 +120,13 @@ export function TasksPage() {
   type Row = (typeof rows)[number];
 
   const text = q.trim().toLowerCase();
+  const inTab = (r: Row) => (tab === "all" ? true : tab === "done" ? r.done : tab === "overdue" ? r.overdue : tab === "today" ? !r.done && r.date === key : !r.done);
+  const isLeaving = (r: Row) => r.t.id in leaving && !inTab(r);
   const shown = rows
-    .filter((r) => (tab === "all" ? true : tab === "done" ? r.done : tab === "overdue" ? r.overdue : tab === "today" ? !r.done && r.date === key : !r.done))
+    .filter((r) => inTab(r) || isLeaving(r))
     .filter((r) => (!cat || r.t.category === cat) && (!prio || r.t.priority === prio) && (!from || r.date >= from) && (!to || r.date <= to))
     .filter((r) => !text || [r.t.title, r.t.description, r.t.notes, r.t.category].some((x) => x?.toLowerCase().includes(text)))
-    .sort((a, b) => (a.done !== b.done ? (a.done ? 1 : -1) : a.date.localeCompare(b.date) || "hml".indexOf(a.t.priority[0]) - "hml".indexOf(b.t.priority[0])));
+    .sort((a, b) => ((a.done && !isLeaving(a)) !== (b.done && !isLeaving(b)) ? (a.done && !isLeaving(a) ? 1 : -1) : a.date.localeCompare(b.date) || "hml".indexOf(a.t.priority[0]) - "hml".indexOf(b.t.priority[0])));
   const count = (f: (r: Row) => boolean) => rows.filter(f).length;
   const nOpen = count((r) => !r.done);
   const nToday = count((r) => !r.done && r.date === key);
@@ -95,6 +137,7 @@ export function TasksPage() {
   // group by time, within the selected tab
   const weekLeft = s.weekStartsOn === 1 ? (7 - now.getDay()) % 7 : 6 - now.getDay();
   const groupOf = (r: Row): TaskGroup => {
+    if (isLeaving(r)) return leaving[r.t.id];
     if (r.done && tab !== "done") return "done";
     if (!r.date) return "none";
     const n = dayDiff(now, parseYmd(r.date));
@@ -107,6 +150,20 @@ export function TasksPage() {
   const filtering = hidden > 0 || !!text;
   const clear = () => (setQ(""), setCat(""), setPrio(""), setFrom(""), setTo(""));
   const add = () => ui.editTask(null, key);
+  const tick = (r: Row) => {
+    holdFocus(document.activeElement);
+    const repeats = r.t.recurrence.freq !== "none";
+    // in a tab of open tasks the row is about to disappear: let it show its tick for a moment first
+    if (!r.done && !repeats && tab !== "all" && tab !== "done" && motionOk()) {
+      const id = r.t.id;
+      const group = groupOf(r);
+      setLeaving((l) => ({ ...l, [id]: group }));
+      window.setTimeout(() => setLeaving((l) => Object.fromEntries(Object.entries(l).filter(([k]) => k !== id))), LEAVE_MS);
+    }
+    const wasDone = repeats && taskDoneOn(r.t, r.date);
+    toggleTask(r.t, r.date);
+    if (repeats && !wasDone && r.date) toast(`Done for ${shortDate(parseYmd(r.date), now)}`, "This task repeats, so its next date is listed now.", "ok");
+  };
 
   return (
     <div className="page wk">
@@ -145,7 +202,7 @@ export function TasksPage() {
           <div className="wk-filters" data-open={filtersOpen} role="search" aria-label="Filter tasks">
             <div className="wk-search">
               <Search size={16} aria-hidden />
-              <input className="input" type="search" aria-label="Search tasks" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name, description, notes" />
+              <input className="input" type="search" aria-label="Search tasks" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search tasks" />
             </div>
             <button type="button" className="btn wk-toggle" aria-expanded={filtersOpen} aria-controls="wk-task-filters" onClick={() => setFiltersOpen((o) => !o)}>
               <SlidersHorizontal size={15} /> Filters {hidden > 0 && <span className="wk-pill num" aria-label={`${hidden} active`}>{hidden}</span>}
@@ -158,8 +215,8 @@ export function TasksPage() {
               <select className="select" aria-label="Priority" value={prio} onChange={(e) => setPrio(e.target.value)}>
                 <option value="">Any priority</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option>
               </select>
-              <label className="wk-date"><span>From</span><input className="input" type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} /></label>
-              <label className="wk-date"><span>To</span><input className="input" type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} /></label>
+              <label className="wk-date"><span>From</span><input className="input" type="date" aria-label="From date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} /></label>
+              <label className="wk-date"><span>To</span><input className="input" type="date" aria-label="To date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} /></label>
               {filtering && <button type="button" className="btn ghost wk-clear" onClick={clear}><X size={15} /> Clear</button>}
             </div>
           </div>
@@ -200,9 +257,13 @@ export function TasksPage() {
                 {(g.id === "today" || g.id === "tomorrow") && <span className="d">{shortDate(addDays(now, g.id === "today" ? 0 : 1), now)}</span>}
               </h3>
               <ul className="wk-rows">
-                {g.rows.map(({ t, date, done, overdue }) => (
-                  <TaskRow key={t.id} t={t} date={date} done={done} overdue={overdue} hour12={s.hour12} now={now} />
-                ))}
+                {g.rows.map((r) =>
+                  isLeaving(r) ? (
+                    <LeavingRow key={r.t.id} id={r.t.id} title={r.t.title} />
+                  ) : (
+                    <TaskRow key={r.t.id} t={r.t} date={r.date} done={r.done} overdue={r.overdue} hour12={s.hour12} now={now} onToggle={() => tick(r)} />
+                  ),
+                )}
               </ul>
             </section>
           ))}
@@ -212,14 +273,14 @@ export function TasksPage() {
   );
 }
 
-function TaskRow({ t, date, done, overdue, hour12, now }: { t: Task; date: string; done: boolean; overdue: boolean; hour12: boolean; now: Date }) {
+function TaskRow({ t, date, done, overdue, hour12, now, onToggle }: { t: Task; date: string; done: boolean; overdue: boolean; hour12: boolean; now: Date; onToggle: () => void }) {
   const ui = useUi();
   const d = date ? parseYmd(date) : null;
   const p = PRIORITY[t.priority] ?? PRIORITY.medium;
   const late = d ? -dayDiff(now, d) : 0;
   return (
-    <li className={"wk-row" + (done ? " done" : "")}>
-      <Check checked={done} label={done ? `Reopen "${t.title}"` : `Mark "${t.title}" complete`} onChange={() => toggleTask(t, date)} />
+    <li className={"wk-row" + (done ? " done" : "")} data-id={t.id}>
+      <Check checked={done} label={done ? `Reopen "${t.title}"` : `Mark "${t.title}" complete`} onChange={onToggle} />
       <button type="button" className="wk-main" onClick={() => ui.editTask(t)}>
         <span className="wk-title">{t.title}</span>
         <span className="wk-meta">
@@ -235,7 +296,7 @@ function TaskRow({ t, date, done, overdue, hour12, now }: { t: Task; date: strin
       <div className="wk-acts">
         {d && <button type="button" className="btn ghost icon sm" aria-label="Show on calendar" title="Show on calendar" onClick={() => ui.openDay(d)}><CalendarDays size={15} /></button>}
         <button type="button" className="btn ghost icon sm" aria-label="Edit task" title="Edit task" onClick={() => ui.editTask(t)}><Pencil size={15} /></button>
-        <button type="button" className="btn ghost icon sm danger" aria-label="Delete task" title="Delete task" onClick={() => confirm(`Delete "${t.title}"?`) && (removeItem("tasks", t.id), toast("Task deleted"))}><Trash2 size={15} /></button>
+        <button type="button" className="btn ghost icon sm danger" aria-label="Delete task" title="Delete task" onClick={(e) => confirm(`Delete "${t.title}"?`) && (holdFocus(e.currentTarget), removeItem("tasks", t.id), toast("Task deleted"))}><Trash2 size={15} /></button>
       </div>
     </li>
   );
@@ -264,6 +325,8 @@ export function RemindersPage() {
   const s = useSettings();
   const [tab, setTab] = useState<ReminderTab>("upcoming");
   const [perm, setPerm] = useState(notificationPermission());
+  // reminders ticked a moment ago that no longer belong in this tab
+  const [leaving, setLeaving] = useState<Record<string, true>>({});
   const now = new Date();
   const day = today();
 
@@ -284,7 +347,9 @@ export function RemindersPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reminders, notifications.length]);
   type Row = (typeof rows)[number];
-  const shown = rows.filter((x) => (tab === "done" ? x.done : tab === "overdue" ? x.overdue : !x.done && !x.overdue)).sort((a, b) => (tab === "upcoming" ? a.at.getTime() - b.at.getTime() : b.at.getTime() - a.at.getTime()));
+  const inTab = (x: Row) => (tab === "done" ? x.done : tab === "overdue" ? x.overdue : !x.done && !x.overdue);
+  const isLeaving = (x: Row) => x.r.id in leaving && !inTab(x);
+  const shown = rows.filter((x) => inTab(x) || isLeaving(x)).sort((a, b) => (tab === "upcoming" ? a.at.getTime() - b.at.getTime() : b.at.getTime() - a.at.getTime()));
   const n = (f: (x: Row) => boolean) => rows.filter(f).length;
   const nUp = n((x) => !x.done && !x.overdue);
   const nOver = n((x) => x.overdue);
@@ -299,6 +364,18 @@ export function RemindersPage() {
     else days.push({ date: x.date, rows: [x] });
   }
   const add = () => ui.editReminder(null, ymd(day));
+  const tick = (x: Row) => {
+    holdFocus(document.activeElement);
+    const repeats = x.r.recurrence.freq !== "none";
+    if (!x.done && !repeats && tab !== "done" && motionOk()) {
+      const id = x.r.id;
+      setLeaving((l) => ({ ...l, [id]: true }));
+      window.setTimeout(() => setLeaving((l) => Object.fromEntries(Object.entries(l).filter(([k]) => k !== id))), LEAVE_MS);
+    }
+    const wasDone = repeats && reminderDoneOn(x.r, x.date);
+    toggleReminder(x.r, x.date);
+    if (repeats && !wasDone) toast(`Done for ${shortDate(parseYmd(x.date), day)}`, "This reminder repeats, so its next time is listed now.", "ok");
+  };
   const enable = async () => {
     const p = await requestNotificationPermission();
     setPerm(p);
@@ -319,12 +396,12 @@ export function RemindersPage() {
         <section className="panel wk-summary three" aria-label="Reminder summary">
           <Stat n={nUp} label="Upcoming" icon={<Bell size={14} />} name={`Show upcoming reminders, ${nUp}`} pressed={tab === "upcoming"} onClick={() => setTab("upcoming")} />
           <Stat n={nOver} label="Overdue" icon={<AlertCircle size={14} />} name={`Show overdue reminders, ${nOver}`} pressed={tab === "overdue"} alert={nOver > 0} onClick={() => setTab("overdue")} />
-          <Stat n={nDone} label="Done" icon={<CheckCheck size={14} />} name={`Show finished reminders, ${nDone}`} pressed={tab === "done"} onClick={() => setTab("done")} />
+          <Stat n={nDone} label="Completed" icon={<CheckCheck size={14} />} name={`Show finished reminders, ${nDone}`} pressed={tab === "done"} onClick={() => setTab("done")} />
           <div className="wk-aside">
             <div className="eyebrow">Next up</div>
             {next ? (
               <>
-                <div className="big truncate">{next.r.message}</div>
+                <div className="big clamp">{next.r.message}</div>
                 <div className="small num">{relDays(next.at)} at {fmtTime(next.r.time, s.hour12)}{untilText(next.at, now) && ` · ${untilText(next.at, now)}`}</div>
               </>
             ) : (
@@ -376,9 +453,13 @@ export function RemindersPage() {
                     <span className="d">{near ? shortDate(d, day) : relDays(d)}</span>
                   </h3>
                   <ul className="wk-rows">
-                    {g.rows.map(({ r, date, at, done, overdue }) => (
-                      <ReminderRow key={r.id} r={r} date={date} at={at} done={done} overdue={overdue} hour12={s.hour12} />
-                    ))}
+                    {g.rows.map((x) =>
+                      isLeaving(x) ? (
+                        <LeavingRow key={x.r.id} id={x.r.id} title={x.r.message} timed={fmtTime(x.r.time, s.hour12)} />
+                      ) : (
+                        <ReminderRow key={x.r.id} r={x.r} date={x.date} at={x.at} done={x.done} overdue={x.overdue} hour12={s.hour12} onToggle={() => tick(x)} />
+                      ),
+                    )}
                   </ul>
                 </section>
               );
@@ -411,14 +492,14 @@ export function RemindersPage() {
   );
 }
 
-function ReminderRow({ r, date, at, done, overdue, hour12 }: { r: Reminder; date: string; at: Date; done: boolean; overdue: boolean; hour12: boolean }) {
+function ReminderRow({ r, date, at, done, overdue, hour12, onToggle }: { r: Reminder; date: string; at: Date; done: boolean; overdue: boolean; hour12: boolean; onToggle: () => void }) {
   const ui = useUi();
   const fire = reminderFireTime(r, date);
   const sameDay = ymd(fire) === date;
   return (
-    <li className={"wk-row timed" + (done ? " done" : "")}>
+    <li className={"wk-row timed" + (done ? " done" : "")} data-id={r.id}>
       <span className="wk-time">{fmtTime(r.time, hour12)}{overdue && <small>Overdue</small>}</span>
-      <Check checked={done} label={done ? `Reopen "${r.message}"` : `Mark "${r.message}" complete`} onChange={() => toggleReminder(r, date)} />
+      <Check checked={done} label={done ? `Reopen "${r.message}"` : `Mark "${r.message}" complete`} onChange={onToggle} />
       <button type="button" className="wk-main" onClick={() => ui.editReminder(r)}>
         <span className="wk-title">{r.message}</span>
         <span className="wk-meta">
@@ -434,7 +515,7 @@ function ReminderRow({ r, date, at, done, overdue, hour12 }: { r: Reminder; date
       <div className="wk-acts">
         <button type="button" className="btn ghost icon sm" aria-label="Show on calendar" title="Show on calendar" onClick={() => ui.openDay(at)}><CalendarDays size={15} /></button>
         <button type="button" className="btn ghost icon sm" aria-label="Edit reminder" title="Edit reminder" onClick={() => ui.editReminder(r)}><Pencil size={15} /></button>
-        <button type="button" className="btn ghost icon sm danger" aria-label="Delete reminder" title="Delete reminder" onClick={() => confirm(`Delete "${r.message}"?`) && (removeItem("reminders", r.id), toast("Reminder deleted"))}><Trash2 size={15} /></button>
+        <button type="button" className="btn ghost icon sm danger" aria-label="Delete reminder" title="Delete reminder" onClick={(e) => confirm(`Delete "${r.message}"?`) && (holdFocus(e.currentTarget), removeItem("reminders", r.id), toast("Reminder deleted"))}><Trash2 size={15} /></button>
       </div>
     </li>
   );

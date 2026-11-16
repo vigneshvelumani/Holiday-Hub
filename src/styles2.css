@@ -68,7 +68,7 @@
 .nav-item svg { flex: none; }
 .nav-item[aria-current="page"] { background: var(--accent-soft); color: var(--ink); box-shadow: none; font-weight: 600; }
 .sidebar .nav-item[aria-current="page"]::before { content: ""; position: absolute; left: -10px; top: 8px; bottom: 8px; width: 3px; border-radius: 0 3px 3px 0; background: var(--accent); animation: fade 0.25s ease both; }
-.collapsed .sidebar .nav-label, .collapsed .sidebar .brand-name, .collapsed .sidebar .count, .collapsed .sidebar .sidebar-foot { display: none; }
+.collapsed .sidebar .nav-label, .collapsed .sidebar .brand-name, .collapsed .sidebar .count { display: none; }
 .collapsed .sidebar .nav-group { height: 1px; padding: 0; margin: 9px 8px; background: var(--line); font-size: 0; }
 .collapsed .sidebar .nav-item { justify-content: center; padding: 0; }
 .collapsed .sidebar .brand { flex-direction: column; gap: 10px; padding-bottom: 8px; }

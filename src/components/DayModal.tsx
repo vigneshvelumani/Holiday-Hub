@@ -46,7 +46,10 @@ export function DayModal({ date, onClose, onDate }: { date: Date; onClose: () =>
   // focus moves into the dialog when it opens and back to where it was when it closes
   useEffect(() => {
     const before = document.activeElement as HTMLElement | null;
-    ref.current?.querySelector<HTMLElement>("[data-autofocus]")?.focus();
+    // with a keyboard and mouse the quick-add box is ready to type in; on touch screens focusing it
+    // would throw the on-screen keyboard over the sheet, so the dialog itself takes focus there
+    const typing = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+    (typing ? ref.current?.querySelector<HTMLElement>("[data-autofocus]") : ref.current)?.focus();
     return () => before?.focus?.();
   }, []);
   useEffect(() => {
@@ -112,12 +115,12 @@ export function DayModal({ date, onClose, onDate }: { date: Date; onClose: () =>
 
   return (
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal day" role="dialog" aria-modal="true" aria-label={`Everything on ${fmtLong(date)}`} ref={ref}>
+      <div className="modal day" role="dialog" aria-modal="true" aria-label={`Everything on ${fmtLong(date)}`} ref={ref} tabIndex={-1} style={{ outline: "none" }}>
         <div className="day-head">
           <div className="dnum num tick" key={key}>{date.getDate()}</div>
           <div className="grow">
             <div className="eyebrow">{relDays(date)} · Week {isoWeek(date)}</div>
-            <h2 className="display" style={{ fontSize: 24, lineHeight: 1.15 }}>{fmt(date, { weekday: "long" })}, {fmt(date, { month: "long", year: "numeric" })}</h2>
+            <h2>{fmt(date, { weekday: "long" })}, {fmt(date, { month: "long", year: "numeric" })}</h2>
             <div className="row wrap" style={{ marginTop: 8 }}>
               {sat && <SatTag status={sat} size="lg" long />}
               {holidays.filter((h) => h.holiday!.kind !== "bank").slice(0, 3).map((h) => (
@@ -127,10 +130,10 @@ export function DayModal({ date, onClose, onDate }: { date: Date; onClose: () =>
             </div>
           </div>
           <div className="row" style={{ gap: 4 }}>
-            <button className="btn icon sm" aria-label="Previous day" onClick={() => onDate(addDays(date, -1))}><ChevronLeft size={15} /></button>
+            <button className="btn icon sm" aria-label="Previous day" title="Previous day (Left arrow)" onClick={() => onDate(addDays(date, -1))}><ChevronLeft size={16} /></button>
             <button className="btn sm" onClick={() => onDate(today())} disabled={ahead === 0}>Today</button>
-            <button className="btn icon sm" aria-label="Next day" onClick={() => onDate(addDays(date, 1))}><ChevronRight size={15} /></button>
-            <button className="btn ghost icon sm" aria-label="Close" onClick={onClose}><X size={16} /></button>
+            <button className="btn icon sm" aria-label="Next day" title="Next day (Right arrow)" onClick={() => onDate(addDays(date, 1))}><ChevronRight size={16} /></button>
+            <button className="btn ghost icon sm" aria-label="Close" title="Close (Esc)" onClick={onClose} style={{ marginLeft: 6 }}><X size={18} /></button>
           </div>
         </div>
 
@@ -139,13 +142,13 @@ export function DayModal({ date, onClose, onDate }: { date: Date; onClose: () =>
             <section>
               <div className="sec-title">Office &amp; leave</div>
               {sat ? (
-                <div className={"stack tight " + (sat === "off" ? "sat-off" : "sat-working")} style={{ padding: "12px 14px", border: "1px solid var(--line)", borderRadius: "var(--radius-sm)" }}>
+                <div className={"day-box " + (sat === "off" ? "sat-off" : "sat-working")}>
                   <div className="strong" style={{ fontSize: 15 }}>{sat === "working" ? "Working Saturday — the office is open." : "Non-working Saturday — the office is closed."}</div>
                   <div className="small muted row" style={{ gap: 6 }}><Lock size={12} /> Saturdays alternate on a fixed schedule; this can't be changed here.</div>
                   {bank && <div className="small row" style={{ gap: 6 }}><Landmark size={12} /> Banks are {bank === "closed" ? "closed (2nd / 4th Saturday)" : "open"}.</div>}
                 </div>
               ) : (
-                <div className="row" style={{ padding: "12px 14px", border: "1px solid var(--line)", borderRadius: "var(--radius-sm)", gap: 12, alignItems: "flex-start" }}>
+                <div className="day-box plain">
                   <BriefcaseBusiness size={16} style={{ marginTop: 2, flex: "none" }} />
                   <div><div className="strong">{status!.title}</div><div className="small muted">{status!.sub}</div></div>
                 </div>
@@ -154,7 +157,7 @@ export function DayModal({ date, onClose, onDate }: { date: Date; onClose: () =>
 
             {holidays.length > 0 && (
               <section>
-                <div className="sec-title">Holidays &amp; observances <span>{holidays.length}</span></div>
+                <div className="sec-title">Holidays &amp; observances <span className="n num" aria-label={`${holidays.length} listed`}>{holidays.length}</span></div>
                 <div className="stack tight">
                   {holidays.map((i) => (
                     <div key={i.key} className="row" style={{ alignItems: "flex-start", gap: 10 }}>
@@ -172,9 +175,9 @@ export function DayModal({ date, onClose, onDate }: { date: Date; onClose: () =>
             )}
 
             <section>
-              <div className="sec-title">Your day <span>{mine.length}</span></div>
+              <div className="sec-title">Your day <span className="n num" aria-label={`${mine.length} item${mine.length === 1 ? "" : "s"}`}>{mine.length}</span></div>
               <form className="row" onSubmit={addQuick} style={{ marginBottom: 8 }}>
-                <input className="input" data-autofocus value={quick} onChange={(e) => setQuick(e.target.value)} placeholder="Add a task for this day and press Enter" aria-label="Quick add task" maxLength={200} />
+                <input className="input" data-autofocus value={quick} onChange={(e) => setQuick(e.target.value)} placeholder="Add a task and press Enter" aria-label="Quick add task" maxLength={200} />
                 <button className="btn primary icon" type="submit" aria-label="Add task" disabled={!quick.trim()}><Plus size={16} /></button>
               </form>
               <div className="row wrap" style={{ marginBottom: 10 }}>
@@ -183,17 +186,17 @@ export function DayModal({ date, onClose, onDate }: { date: Date; onClose: () =>
                 <button className="btn sm" onClick={() => ui.editEvent(null, key)}><CalendarDays size={13} /> Event</button>
               </div>
               {mine.length === 0 ? (
-                <div className="small muted">No tasks, reminders or events on this day yet.</div>
+                <div className="small muted">Nothing of yours on this day yet. Type above to add a task, or add a reminder or event.</div>
               ) : (
-                <div className="stack tight">
+                <div>
                   {mine.map((i) => (
-                    <div key={i.key} className="row" style={{ alignItems: "flex-start" }}>
+                    <div key={i.key} className="day-row">
                       {i.task || i.reminder ? (
                         <Check checked={!!i.done} label={i.done ? "Reopen" : "Mark complete"} onChange={() => (i.task ? toggleTask(i.task, key) : toggleReminder(i.reminder!, key))} />
                       ) : (
-                        <span style={{ width: 18, display: "grid", placeItems: "center", color: `var(--c-${i.tone})`, marginTop: 3 }}><ItemIcon item={i} size={13} /></span>
+                        <span style={{ width: 24, height: 24, flex: "none", display: "grid", placeItems: "center", color: `var(--c-${i.tone})` }}><ItemIcon item={i} size={15} /></span>
                       )}
-                      <button className="grow" style={{ border: 0, background: "none", textAlign: "left", padding: 0, cursor: i.type === "salary" ? "default" : "pointer" }} onClick={() => i.type !== "salary" && onItem(i)}>
+                      <button className="open" disabled={i.type === "salary"} onClick={() => onItem(i)} title={i.type === "salary" ? undefined : "Open to edit"}>
                         <div className={"strong" + (i.done ? " muted" : "")} style={i.done ? { textDecoration: "line-through" } : undefined}>
                           {i.time && <span className="num muted">{fmtTime(i.time, s.hour12)} · </span>}
                           {i.title}
@@ -211,14 +214,14 @@ export function DayModal({ date, onClose, onDate }: { date: Date; onClose: () =>
               <div className="sec-title"><label htmlFor="day-note">Note</label>
                 <button className="btn sm" onClick={saveNote} disabled={note === saved}>Save</button>
               </div>
-              <textarea id="day-note" className="textarea" value={note} onChange={(e) => setNote(e.target.value)} onBlur={saveNote} placeholder="Write a note for this day…" rows={3} />
+              <textarea id="day-note" className="textarea" value={note} onChange={(e) => setNote(e.target.value)} onBlur={saveNote} placeholder="Write a note for this day…" rows={3} maxLength={5000} />
             </section>
 
             <section>
               <div className="sec-title">Mood</div>
-              <div className="row">
+              <div className="row wrap mood-row" role="group" aria-label="Mood for this day">
                 {MOODS.map((m) => (
-                  <button key={m.value} className="btn sm" aria-pressed={mood?.mood === m.value} style={mood?.mood === m.value ? { background: "var(--accent-soft)", borderColor: "var(--accent)" } : undefined} onClick={() => (mood?.mood === m.value ? removeItem("moods", key) : saveItem("moods", { id: key, mood: m.value }))}>
+                  <button key={m.value} className="btn sm" aria-pressed={mood?.mood === m.value} onClick={() => (mood?.mood === m.value ? removeItem("moods", key) : saveItem("moods", { id: key, mood: m.value }))}>
                     <m.Icon size={15} aria-hidden /> {m.label}
                   </button>
                 ))}

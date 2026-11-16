@@ -1,6 +1,6 @@
-import { Fragment, Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import {
-  Bell, CalendarDays, CheckCheck, CloudSun, Flag, Globe2, LayoutDashboard, ListTodo, Menu, Moon, MoonStar, Newspaper, PanelLeftClose, PanelLeftOpen, Plus, Search, Settings as SettingsIcon, Sun, Trash2, X,
+  Bell, BellOff, Cake, CalendarDays, Check, CheckCheck, CircleCheck, CloudSun, Flag, Globe2, Info, LayoutDashboard, ListTodo, MapPin, Menu, Moon, MoonStar, Newspaper, PanelLeftClose, PanelLeftOpen, Plus, Search, SearchX, Settings as SettingsIcon, Sun, Trash2, TriangleAlert, X,
 } from "lucide-react";
 import { fmt, parseYmd, startOfDay, today, ymd, type Ymd } from "./lib/dates.ts";
 import { newEvent, newReminder, newTask, search, type SearchHit } from "./lib/items.ts";
@@ -14,7 +14,7 @@ import { LocationChip, LocationDialog } from "./components/Location.tsx";
 import { SkyBox } from "./components/SkyBox.tsx";
 import { useSky } from "./lib/sky.ts";
 import { BirthdaysModal, EventForm, ReminderForm, TaskForm } from "./components/Forms.tsx";
-import { UiContext, tone, useUi as useContextUi, type Route, type Ui } from "./components/ui.tsx";
+import { Modal, UiContext, tone, useUi as useContextUi, type Route, type Ui } from "./components/ui.tsx";
 import { Dashboard, HolidaysPage, RemindersPage, TasksPage, timeAgo } from "./pages/Main.tsx";
 
 // the secondary pages load on demand, so the first paint only carries the dashboard and calendar
@@ -212,19 +212,20 @@ export default function App() {
             <Menu size={19} /> More
           </button>
         </nav>
-        {more && (
-          <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && setMore(false)}>
-            <div className="modal" role="dialog" aria-label="More sections">
-              <div className="modal-head"><h2 className="modal-title">More</h2><button className="btn ghost icon sm" onClick={() => setMore(false)} aria-label="Close"><X size={16} /></button></div>
-              <div className="modal-body" style={{ gap: 4 }}>
-                {NAV.slice(4).map((n) => (
-                  <button key={n.id} className="nav-item" aria-current={route === n.id ? "page" : undefined} onClick={() => go(n.id)}><n.icon size={17} /> {n.label}</button>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
       </div>
+      {more && (
+        <Modal title="More" onClose={() => setMore(false)}>
+          <nav className="sheet-nav" aria-label="More sections">
+            {NAV.slice(4).map((n, i) => (
+              <button key={n.id} className="nav-item" data-autofocus={(route === n.id || (i === 0 && !NAV.slice(4).some((x) => x.id === route))) || undefined} aria-current={route === n.id ? "page" : undefined} onClick={() => go(n.id)}>
+                <n.icon size={19} /> {n.label}
+                {route === n.id && <Check size={17} aria-hidden />}
+              </button>
+            ))}
+            <button className="nav-item" onClick={() => (setMore(false), setLocOpen("manual"))}><MapPin size={19} /> Change location</button>
+          </nav>
+        </Modal>
+      )}
 
       {day && <DayModal date={day} onClose={() => setDay(null)} onDate={(d) => (setDay(startOfDay(d)), setFocusRaw(startOfDay(d)))} />}
       {editing?.kind === "task" && <TaskForm key={editing.item.id} initial={editing.item} isNew={editing.isNew} onClose={() => setEditing(null)} />}
@@ -267,17 +268,34 @@ function Horizon() {
   );
 }
 
-function useClickAway(open: boolean, close: () => void) {
+/** Closes a popover on an outside click or Escape; Escape hands focus back to the button that opened it. */
+function useClickAway(open: boolean, close: () => void, returnFocus = false) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
     const away = (e: MouseEvent) => ref.current && !ref.current.contains(e.target as Node) && close();
-    const esc = (e: KeyboardEvent) => e.key === "Escape" && close();
+    const esc = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (returnFocus && ref.current?.contains(document.activeElement)) ref.current.querySelector<HTMLElement>("[aria-haspopup]")?.focus();
+      close();
+    };
     document.addEventListener("mousedown", away);
     document.addEventListener("keydown", esc);
     return () => (document.removeEventListener("mousedown", away), document.removeEventListener("keydown", esc));
   }, [open]);
   return ref;
+}
+
+/** True on phone-width screens, where the search box is too short for its long placeholder. */
+function useNarrow() {
+  const [narrow, setNarrow] = useState(() => window.matchMedia("(max-width: 900px)").matches);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 900px)");
+    const on = () => setNarrow(mq.matches);
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+  return narrow;
 }
 
 function GlobalSearch() {
@@ -289,7 +307,9 @@ function GlobalSearch() {
   const [active, setActive] = useState(0);
   const ref = useClickAway(open, () => setOpen(false));
   const inputRef = useRef<HTMLInputElement>(null);
+  const narrow = useNarrow();
   const hits = useMemo(() => (open ? search(q, data, s) : []), [q, data, s, open]);
+  const showing = open && q.trim().length >= 2;
   useEffect(() => setActive(0), [q]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -311,11 +331,15 @@ function GlobalSearch() {
         ref={inputRef}
         className="input"
         value={q}
-        placeholder="Search holidays, tasks, events, notes or a date"
+        placeholder={narrow ? "Search" : "Search holidays, tasks, notes or a date"}
         aria-label="Global search"
         role="combobox"
-        aria-expanded={open && q.trim().length >= 2}
+        aria-autocomplete="list"
+        aria-expanded={showing}
         aria-controls="search-results"
+        aria-activedescendant={showing && hits[active] ? `search-hit-${active}` : undefined}
+        autoComplete="off"
+        spellCheck={false}
         onChange={(e) => (setQ(e.target.value), setOpen(true))}
         onFocus={() => setOpen(true)}
         onKeyDown={(e) => {
@@ -326,11 +350,11 @@ function GlobalSearch() {
         }}
       />
       {!q && <span className="kbd" aria-hidden>/</span>}
-      {open && q.trim().length >= 2 && (
-        <div className="pop search-results" id="search-results" role="listbox">
-          {hits.length === 0 && <div className="empty"><strong>No matches</strong>Try a holiday name, a task, or a date like “14 Nov 2026” or “March 2030”.</div>}
+      {showing && (
+        <div className="pop search-results" id="search-results" role="listbox" aria-label="Search results">
+          {hits.length === 0 && <div className="empty"><SearchX size={22} aria-hidden /><strong>No matches for “{q.trim()}”</strong>Try a holiday name, a task, or a date like “14 Nov 2026” or “March 2030”.</div>}
           {hits.map((h, i) => (
-            <button key={h.key} role="option" aria-selected={i === active} className={"search-hit" + (i === active ? " active" : "")} onMouseEnter={() => setActive(i)} onClick={() => choose(h)}>
+            <button key={h.key} id={`search-hit-${i}`} role="option" tabIndex={-1} aria-selected={i === active} className={"search-hit" + (i === active ? " active" : "")} onMouseEnter={() => setActive(i)} onClick={() => choose(h)}>
               <span className="swatch" style={tone(h.tone)} />
               <span className="grow">
                 <span className="strong truncate" style={{ display: "block" }}>{h.title}</span>
@@ -348,20 +372,32 @@ function GlobalSearch() {
 function NewMenu({ date }: { date: Ymd }) {
   const ui = useContextUi();
   const [open, setOpen] = useState(false);
-  const ref = useClickAway(open, () => setOpen(false));
+  const ref = useClickAway(open, () => setOpen(false), true);
+  const menu = useRef<HTMLDivElement>(null);
   const pick = (fn: () => void) => (setOpen(false), fn());
+  // the menu takes focus when it opens; the arrow keys, Home and End move through it
+  useEffect(() => {
+    if (open) menu.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+  }, [open]);
+  const onKeys = (e: ReactKeyboardEvent) => {
+    const items = [...(menu.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') || [])];
+    const i = items.indexOf(document.activeElement as HTMLElement);
+    const to = e.key === "ArrowDown" ? (i + 1) % items.length : e.key === "ArrowUp" ? (i - 1 + items.length) % items.length : e.key === "Home" ? 0 : e.key === "End" ? items.length - 1 : -1;
+    if (to >= 0) (e.preventDefault(), e.stopPropagation(), items[to]?.focus());
+    else if (e.key === "Tab") setOpen(false);
+  };
   return (
     <div className="pop-wrap" ref={ref}>
-      <button className="btn primary" onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open}>
+      <button className="btn primary" onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open} aria-label="New" title="Add a task, reminder, event or birthday">
         <Plus size={17} /> <span className="hide-sm">New</span>
       </button>
       {open && (
-        <div className="pop stack tight" style={{ right: 0, top: 48, width: 210, padding: 6 }} role="menu">
-          <span className="xs muted" style={{ padding: "4px 8px" }}>For {fmt(parseYmd(date), { weekday: "short", day: "numeric", month: "short" })}</span>
-          <button role="menuitem" className="nav-item" onClick={() => pick(() => ui.editTask(null, date))}><ListTodo size={15} /> Task</button>
-          <button role="menuitem" className="nav-item" onClick={() => pick(() => ui.editReminder(null, date))}><Bell size={15} /> Reminder</button>
-          <button role="menuitem" className="nav-item" onClick={() => pick(() => ui.editEvent(null, date))}><CalendarDays size={15} /> Event</button>
-          <button role="menuitem" className="nav-item" onClick={() => pick(ui.manageBirthdays)}><Flag size={15} /> Birthday</button>
+        <div className="pop pop-menu stack tight" role="menu" aria-label="Add new" ref={menu} onKeyDown={onKeys}>
+          <span className="pop-cap">Add for {fmt(parseYmd(date), { weekday: "short", day: "numeric", month: "short" })}</span>
+          <button role="menuitem" className="nav-item" onClick={() => pick(() => ui.editTask(null, date))}><ListTodo size={17} /> Task</button>
+          <button role="menuitem" className="nav-item" onClick={() => pick(() => ui.editReminder(null, date))}><Bell size={17} /> Reminder</button>
+          <button role="menuitem" className="nav-item" onClick={() => pick(() => ui.editEvent(null, date))}><CalendarDays size={17} /> Event</button>
+          <button role="menuitem" className="nav-item" onClick={() => pick(ui.manageBirthdays)}><Cake size={17} /> Birthday</button>
         </div>
       )}
     </div>
@@ -372,7 +408,7 @@ function NotificationCentre() {
   const ui = useContextUi();
   const { notifications } = useData();
   const [open, setOpen] = useState(false);
-  const ref = useClickAway(open, () => setOpen(false));
+  const ref = useClickAway(open, () => setOpen(false), true);
   const list = [...notifications].sort((a, b) => b.at - a.at);
   const unread = list.filter((n) => !n.read).length;
   const markAll = () => replaceCollection("notifications", notifications.map((n) => ({ ...n, read: true })));
@@ -383,7 +419,7 @@ function NotificationCentre() {
         {unread > 0 && <span className="bell-dot num">{unread > 9 ? "9+" : unread}</span>}
       </button>
       {open && (
-        <div className="pop" style={{ right: 0, top: 48, width: "min(360px, calc(100vw - 24px))", padding: 0 }} role="dialog" aria-label="Notification centre">
+        <div className="pop pop-notify" role="dialog" aria-label="Notification centre">
           <div className="card-head">
             <span className="card-title">Notifications</span>
             <span className="row" style={{ gap: 2 }}>
@@ -391,12 +427,12 @@ function NotificationCentre() {
               <button className="btn ghost sm danger" onClick={() => replaceCollection("notifications", [])} disabled={!list.length}><Trash2 size={13} /> Clear</button>
             </span>
           </div>
-          <div className="list" style={{ maxHeight: "60vh", overflowY: "auto" }}>
-            {list.length === 0 && <div className="empty"><strong>No notifications</strong>Reminders and alerts will appear here.</div>}
+          <div className="list">
+            {list.length === 0 && <div className="empty"><BellOff size={22} aria-hidden /><strong>No notifications</strong>Reminders and alerts will appear here when they are due.</div>}
             {list.map((n) => (
-              <div key={n.id} className="list-row" style={{ alignItems: "center", background: n.read ? undefined : "var(--accent-soft)" }}>
-                <button className="grow" style={{ border: 0, background: "none", textAlign: "left", padding: 0, cursor: "pointer" }} onClick={() => { saveItem("notifications", { ...n, read: true }); if (n.dateKey) (setOpen(false), ui.openDay(parseYmd(n.dateKey))); }}>
-                  <div className="strong">{n.title}</div>
+              <div key={n.id} className={"list-row" + (n.read ? "" : " unread")}>
+                <button className="n-open" onClick={() => { saveItem("notifications", { ...n, read: true }); if (n.dateKey) (setOpen(false), ui.openDay(parseYmd(n.dateKey))); }}>
+                  <div className="strong">{!n.read && <span className="n-dot" role="img" aria-label="Unread" />}{n.title}</div>
                   <div className="small">{n.body}</div>
                   <div className="xs muted">{timeAgo(new Date(n.at).toISOString())}</div>
                 </button>
@@ -423,9 +459,12 @@ function Toasts() {
   return (
     <div className="toasts" role="status" aria-live="polite">
       {list.map((t) => (
-        <div className="toast" key={t.id}>
-          <div className="strong">{t.title}</div>
-          {t.body && <div className="b">{t.body}</div>}
+        <div className={"toast " + (t.tone || "info")} key={t.id}>
+          {t.tone === "ok" ? <CircleCheck size={18} aria-hidden /> : t.tone === "warn" ? <TriangleAlert size={18} aria-label="Warning" /> : <Info size={18} aria-hidden />}
+          <div className="grow">
+            <div className="strong">{t.title}</div>
+            {t.body && <div className="b">{t.body}</div>}
+          </div>
         </div>
       ))}
     </div>

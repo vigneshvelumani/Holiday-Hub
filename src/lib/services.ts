@@ -443,7 +443,10 @@ async function originalFeed(): Promise<Raw[]> {
     .map((it: any) => {
       const d = readDescription(String(it.description || it.summary || ""), String(it.title || ""));
       const tag = typeof it.category === "string" ? tags[it.category] || it.category : undefined;
-      return { title: String(it.title || ""), link: String(it.link || ""), source: String(it.source || ""), pubDate: typeof it.pubDate === "string" ? it.pubDate : null, summary: d.summary, related: d.related, image: d.image, tag };
+      // aggregator items arrive as "Headline - Publisher" with the aggregator as the source: credit the publisher
+      const given = String(it.source || "");
+      const named = splitSource(String(it.title || ""), /^google news$/i.test(given.trim()) ? "" : given);
+      return { title: named.title, link: String(it.link || ""), source: named.source || given, pubDate: typeof it.pubDate === "string" ? it.pubDate : null, summary: d.summary, related: d.related, image: d.image, tag };
     });
 }
 
@@ -482,7 +485,23 @@ async function gather(id: string, feeds: string[]): Promise<{ raw: Raw[]; at: nu
 
 // every article seen this session, so the reader can open one by id
 const articles = new Map<string, NewsItem>();
-export const getArticle = (id: string) => articles.get(id);
+/** An article by id: from this session, or from a category saved in this browser (so a reload on an article still opens it). */
+export function getArticle(id: string): NewsItem | undefined {
+  const hit = articles.get(id);
+  if (hit) return hit;
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k || !k.startsWith("almanac.news4:")) continue;
+      const raw = JSON.parse(localStorage.getItem(k) || "null");
+      const items: unknown = raw?.value?.items ?? raw?.items;
+      if (Array.isArray(items)) rememberArticles(items as NewsItem[]);
+    }
+  } catch {
+    /* storage unavailable or a damaged entry: fall through to "not found" */
+  }
+  return articles.get(id);
+}
 export function rememberArticles(items: NewsItem[]) {
   for (const i of items) articles.set(i.id, i);
 }

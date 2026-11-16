@@ -1,5 +1,5 @@
 import "./weather.css";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { AlertTriangle, ChevronLeft, ChevronRight, Cloud, CloudRain, Droplets, Eye, Gauge, MapPin, RefreshCw, Sun, Sunrise, Sunset, Wind } from "lucide-react";
 import { fmt, parseYmd, ymd } from "../lib/dates.ts";
 import { fmtInZone, panchangam } from "../lib/astro.ts";
@@ -67,7 +67,7 @@ function BandScale({ value, breaks, ticks, label }: { value: number; breaks: num
 type Metric = "temp" | "rain" | "wind";
 const METRIC_NAME: Record<Metric, string> = { temp: "temperature", rain: "chance of rain", wind: "wind speed" };
 
-function Hourly({ hours, metric, hour12, live }: { hours: WeatherHour[]; metric: Metric; hour12: boolean; /** the first hour is the current hour */ live: boolean }) {
+function Hourly({ hours, metric, hour12, live, hot, onHot }: { hours: WeatherHour[]; metric: Metric; hour12: boolean; /** the first hour is the current hour */ live: boolean; /** the hour whose details are being read out */ hot: number | null; onHot: (i: number | null) => void }) {
   const vals = hours.map((h) => (metric === "temp" ? h.temp : metric === "rain" ? h.rainProb ?? 0 : h.wind ?? 0));
   const lo = metric === "temp" ? Math.min(...vals) - 1 : 0;
   const hi = metric === "temp" ? Math.max(...vals) + 1 : metric === "rain" ? 100 : Math.max(10, ...vals);
@@ -75,10 +75,14 @@ function Hourly({ hours, metric, hour12, live }: { hours: WeatherHour[]; metric:
   // plot area: 24% (top) … 92% (bottom) of the row, leaving room for the value above each point
   const y = (v: number) => 24 + (1 - t(v)) * 68;
   const x = (i: number) => i * 100 + 50;
+  // the line runs edge to edge: flat into the first point and out of the last, so no column is half-filled
+  const W = vals.length * 100;
   let d = "";
   vals.forEach((v, i) => {
-    d += i === 0 ? `M${x(0)},${y(v).toFixed(2)}` : ` C${x(i) - 50},${y(vals[i - 1]).toFixed(2)} ${x(i) - 50},${y(v).toFixed(2)} ${x(i)},${y(v).toFixed(2)}`;
+    d += i === 0 ? `M0,${y(v).toFixed(2)} L${x(0)},${y(v).toFixed(2)}` : ` C${x(i) - 50},${y(vals[i - 1]).toFixed(2)} ${x(i) - 50},${y(v).toFixed(2)} ${x(i)},${y(v).toFixed(2)}`;
   });
+  if (vals.length) d += ` L${W},${y(vals[vals.length - 1]).toFixed(2)}`;
+  const vMax = Math.max(...vals), vMin = Math.min(...vals);
   const label = (h: WeatherHour, i: number) => {
     const hr = Number(h.time.slice(11, 13));
     if (i === 0 && live) return "Now";
@@ -92,17 +96,20 @@ function Hourly({ hours, metric, hour12, live }: { hours: WeatherHour[]; metric:
   return (
     <div className="wxp-track">
       {metric !== "rain" && vals.length > 1 && (
-        <svg className="wxp-curve" viewBox={`0 0 ${vals.length * 100} 100`} preserveAspectRatio="none" aria-hidden key={metric}>
-          <path className="area" d={`${d} L${x(vals.length - 1)},100 L${x(0)},100 Z`} />
+        <svg className="wxp-curve" viewBox={`0 0 ${W} 100`} preserveAspectRatio="none" aria-hidden key={metric}>
+          {/* guides at the highest and lowest value in view */}
+          <line className="guide" x1="0" x2={W} y1={y(vMax)} y2={y(vMax)} />
+          {vMax !== vMin && <line className="guide" x1="0" x2={W} y1={y(vMin)} y2={y(vMin)} />}
+          <path className="area" d={`${d} L${W},100 L0,100 Z`} />
           <path className="line" d={d} />
         </svg>
       )}
-      <ol className="wxp-hours" style={{ ["--n" as string]: hours.length }} aria-label={`Hour by hour: ${METRIC_NAME[metric]}`}>
+      <ol className="wxp-hours" style={{ ["--n" as string]: hours.length }} aria-label={`Hour by hour: ${METRIC_NAME[metric]}`} onMouseLeave={() => onHot(null)}>
         {hours.map((h, i) => {
           const v = vals[i];
           const newDay = i > 0 && Number(h.time.slice(11, 13)) === 0;
           return (
-            <li key={h.time} className={(i === 0 && live ? "now" : "") + (newDay ? " newday" : "")} aria-label={spoken(h, i)}>
+            <li key={h.time} data-i={i} className={(i === 0 && live ? "now" : "") + (newDay ? " newday" : "") + (i === hot ? " hot" : "")} aria-label={spoken(h, i)} onMouseEnter={() => onHot(i)} onClick={() => onHot(i)}>
               <span className="t" aria-hidden>{label(h, i)}</span>
               <span className="ic" aria-hidden><WeatherIcon code={h.code} isDay={h.isDay} size={22} /></span>
               <span className="wxp-plot" aria-hidden>
@@ -195,6 +202,14 @@ export function WeatherPage() {
   const { data, loading, error, stale, refresh } = sky.weather;
   const [metric, setMetric] = useState<Metric>("temp");
   const scroller = useRef<HTMLDivElement>(null);
+  const [hot, setHotState] = useState<number | null>(null);
+  // mirrored in a ref so quick key repeats step from the latest hour, not the last rendered one
+  const hotRef = useRef<number | null>(null);
+  const setHot = (i: number | null) => {
+    hotRef.current = i;
+    setHotState(i);
+  };
+  const [edge, setEdge] = useState({ start: true, end: false });
   const tz = data?.tz || s.location.tz;
   const zp = zoneParts(tz, now);
   const todayKey = `${zp.year}-${pad(zp.month)}-${pad(zp.day)}`;
@@ -243,6 +258,36 @@ export function WeatherPage() {
   const band = data?.air ? aqiBand(data.air.aqi) : null;
   const rest = placeRest(s.location);
 
+  const syncEdges = () => {
+    const el = scroller.current;
+    if (!el) return;
+    const start = el.scrollLeft <= 2, end = el.scrollLeft + el.clientWidth >= el.scrollWidth - 2;
+    setEdge((p) => (p.start === start && p.end === end ? p : { start, end }));
+  };
+  useEffect(() => {
+    syncEdges();
+    window.addEventListener("resize", syncEdges);
+    return () => window.removeEventListener("resize", syncEdges);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hours.length]);
+  /** Arrow keys step through the hours; the read-out under the strip follows. */
+  const onHoursKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    const n = hours.length;
+    const cur = Math.min(hotRef.current ?? 0, n - 1);
+    const to = e.key === "ArrowRight" ? cur + 1 : e.key === "ArrowLeft" ? cur - 1 : e.key === "Home" ? 0 : e.key === "End" ? n - 1 : -1;
+    if (to < 0 || to >= n) return;
+    e.preventDefault();
+    setHot(to);
+    const sc = scroller.current;
+    const li = sc?.querySelector<HTMLElement>(`li[data-i="${to}"]`);
+    if (!sc || !li) return;
+    const l = li.offsetLeft, r = l + li.offsetWidth;
+    if (l < sc.scrollLeft) sc.scrollLeft = Math.max(0, l - 8);
+    else if (r > sc.scrollLeft + sc.clientWidth - 16) sc.scrollLeft = r - sc.clientWidth + 24;
+  };
+  const hotIdx = hours.length ? Math.min(hot ?? 0, hours.length - 1) : -1;
+  const hotHour = hotIdx >= 0 ? hours[hotIdx] : null;
+
   const scrollHours = (dir: 1 | -1) => {
     const el = scroller.current;
     if (!el) return;
@@ -280,7 +325,7 @@ export function WeatherPage() {
                 <dl className="wxp-facts" aria-label="At a glance">
                   <div><dt><Droplets size={14} /> Humidity</dt><dd><div className="v">{c.humidity}%</div></dd></div>
                   <div><dt><Wind size={14} /> Wind</dt><dd><div className="v">{Math.round(c.wind)} km/h</div>{c.windDir != null && <div className="s">from {compass(c.windDir)}</div>}</dd></div>
-                  <div><dt><CloudRain size={14} /> Rain {isToday ? "today" : "that day"}</dt><dd><div className="v">{d0.rainProb != null ? `${d0.rainProb}%` : "—"}</div>{d0.precip ? <div className="s">{d0.precip} mm</div> : null}</dd></div>
+                  <div><dt><CloudRain size={14} /> Rain {isToday ? "today" : "that day"}</dt><dd><div className="v">{d0.rainProb != null ? `${d0.rainProb}%` : "—"}</div>{d0.rainProb != null && <div className="s">peak chance{d0.precip ? ` · ${d0.precip} mm` : ""}</div>}</dd></div>
                   <div><dt><Gauge size={14} /> Air quality</dt><dd>{data.air && band ? <><div className="v">{Math.round(data.air.aqi)}</div><div className="s">{band.label}</div></> : <div className="v">—</div>}</dd></div>
                 </dl>
               </div>
@@ -335,13 +380,26 @@ export function WeatherPage() {
                 <h2 id="wxp-h-hours">Next {hours.length} hours</h2>
                 <div className="wxp-hours-ctl">
                   <Seg value={metric} onChange={setMetric} label="Hourly chart shows" options={[{ value: "temp", label: "Temperature" }, { value: "rain", label: "Rain chance" }, { value: "wind", label: "Wind" }]} />
-                  <button className="nav-btn" onClick={() => scrollHours(-1)} aria-label="Scroll to earlier hours"><ChevronLeft size={18} /></button>
-                  <button className="nav-btn" onClick={() => scrollHours(1)} aria-label="Scroll to later hours"><ChevronRight size={18} /></button>
+                  <button className="nav-btn" onClick={() => scrollHours(-1)} aria-disabled={edge.start} aria-label="Scroll to earlier hours"><ChevronLeft size={18} /></button>
+                  <button className="nav-btn" onClick={() => scrollHours(1)} aria-disabled={edge.end} aria-label="Scroll to later hours"><ChevronRight size={18} /></button>
                 </div>
               </div>
-              <div className="wxp-scroll" ref={scroller} tabIndex={0} role="group" aria-label={`Hourly forecast for the next ${hours.length} hours, showing ${METRIC_NAME[metric]}${metric === "wind" ? " in km/h" : ""}. Scrolls sideways.`}>
-                <Hourly hours={hours} metric={metric} hour12={s.hour12} live={live} />
+              <div className="wxp-scroll" ref={scroller} tabIndex={0} role="group" onScroll={syncEdges} onKeyDown={onHoursKey} aria-label={`Hourly forecast for the next ${hours.length} hours, showing ${METRIC_NAME[metric]}${metric === "wind" ? " in km/h" : ""}. Scrolls sideways; the arrow keys step through the hours.`}>
+                <Hourly hours={hours} metric={metric} hour12={s.hour12} live={live} hot={hot} onHot={setHot} />
               </div>
+              {hotHour && (
+                <div className="wxp-readout">
+                  <p aria-live="polite" aria-atomic="true">
+                    <b>{hotIdx === 0 && live ? "Now" : `${fmt(parseYmd(hotHour.time.slice(0, 10)), { weekday: "short" })} ${hourText(Number(hotHour.time.slice(11, 13)), s.hour12)}`}</b>
+                    <span className="num">{Math.round(hotHour.temp)}°{data.unit}</span>
+                    <span>{weatherLabel(hotHour.code)}</span>
+                    {hotHour.rainProb != null && <span className="num"><Droplets size={13} aria-hidden /> {hotHour.rainProb}% rain{hotHour.precip ? ` · ${hotHour.precip} mm` : ""}</span>}
+                    {hotHour.wind != null && <span className="num"><Wind size={13} aria-hidden /> {Math.round(hotHour.wind)} km/h</span>}
+                    {hotHour.humidity != null && <span className="num">{Math.round(hotHour.humidity)}% humidity</span>}
+                  </p>
+                  <span className="wxp-hint">{metric === "temp" ? `Line: temperature, °${data.unit}` : metric === "rain" ? "Bars: chance of rain, %" : "Line: wind speed, km/h"}</span>
+                </div>
+              )}
             </section>
           )}
 
@@ -455,7 +513,7 @@ export function WeatherPage() {
                 <span className="k"><CloudRain size={14} /> Precipitation</span>
                 <span className="v">{d0.rainProb ?? 0}<small>%</small></span>
                 <div className="meter" aria-hidden><i style={{ width: `${d0.rainProb ?? 0}%` }} /></div>
-                <span className="m">Chance of rain {isToday ? "today" : "that day"}. {d0.precip ? `${d0.precip} mm expected over the day.` : "No measurable rain expected."}{c.precip > 0 ? ` ${c.precip} mm falling this hour.` : ""}</span>
+                <span className="m">Highest chance of rain in any hour {isToday ? "today" : "that day"}. {d0.precip ? `${d0.precip} mm expected over the day.` : "No measurable rain expected."}{c.precip > 0 ? ` ${c.precip} mm falling this hour.` : ""}</span>
               </div>
 
               <div className="wxp-cell last-row">

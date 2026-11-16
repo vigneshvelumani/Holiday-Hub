@@ -1,5 +1,5 @@
-import { useState, type FormEvent } from "react";
-import { Cake, Trash2 } from "lucide-react";
+import { useEffect, useState, type FormEvent } from "react";
+import { Cake, Plus, Trash2 } from "lucide-react";
 import { MONTHS, daysInMonth, fmtShort, isValidYmd, parseYmd, relDays, uid } from "../lib/dates.ts";
 import { nextBirthday } from "../lib/items.ts";
 import { describeRecurrence, type Freq, type Recurrence, type Unit } from "../lib/recurrence.ts";
@@ -16,7 +16,7 @@ export function RecurrenceEditor({ value, onChange, start }: { value: Recurrence
   const days = value.weekdays?.length ? value.weekdays : [startDow];
   return (
     <div className="stack tight">
-      <div className="grid2">
+      <div className="grid2 keep">
         <Field label="Repeat">
           <select className="select" value={value.freq} onChange={(e) => onChange({ ...value, freq: e.target.value as Freq, interval: value.interval || 2, unit: value.unit || "day" })}>
             <option value="none">Does not repeat</option>
@@ -34,7 +34,7 @@ export function RecurrenceEditor({ value, onChange, start }: { value: Recurrence
         )}
       </div>
       {value.freq === "custom" && (
-        <div className="grid2">
+        <div className="grid2 keep">
           <Field label="Every">
             <input className="input" type="number" min={1} max={999} value={value.interval || 1} onChange={(e) => onChange({ ...value, interval: Math.max(1, Math.floor(+e.target.value || 1)) })} />
           </Field>
@@ -51,7 +51,7 @@ export function RecurrenceEditor({ value, onChange, start }: { value: Recurrence
       {weekly && (
         <div className="field">
           <span className="label">On</span>
-          <div className="row" role="group" aria-label="Weekdays">
+          <div className="row wrap" role="group" aria-label="Weekdays" style={{ gap: 6 }}>
             {DOW.map((d, i) => (
               <button
                 key={i}
@@ -76,13 +76,37 @@ export function RecurrenceEditor({ value, onChange, start }: { value: Recurrence
   );
 }
 
-function Foot({ onDelete, onClose, saveLabel }: { onDelete?: () => void; onClose: () => void; saveLabel: string }) {
+/** One validation message at a time, shown under its field; the field is focused and marked invalid. */
+function useFieldError() {
+  const [err, setErr] = useState<{ field: string; msg: string } | null>(null);
+  return {
+    fail: (field: string, msg: string) => {
+      setErr({ field, msg });
+      requestAnimationFrame(() => document.getElementById("f-" + field)?.focus());
+    },
+    clear: () => setErr(null),
+    bind: (field: string) => ({ id: "f-" + field, "aria-invalid": err?.field === field || undefined }),
+    msg: (field: string) => (err?.field === field ? err.msg : undefined),
+  };
+}
+
+function Foot({ onDelete, deleteHint, onClose, saveLabel }: { onDelete?: () => void; deleteHint?: string; onClose: () => void; saveLabel: string }) {
+  // Delete asks once more in place (no browser confirm box); the question withdraws itself after a few seconds
+  const [armed, setArmed] = useState(false);
+  useEffect(() => {
+    if (!armed) return;
+    const t = setTimeout(() => setArmed(false), 5000);
+    return () => clearTimeout(t);
+  }, [armed]);
   return (
     <>
       {onDelete && (
-        <button type="button" className="btn danger" style={{ marginRight: "auto" }} onClick={onDelete}>
-          <Trash2 size={14} /> Delete
-        </button>
+        <span className="row" style={{ marginRight: "auto", minWidth: 0 }}>
+          <button type="button" className="btn danger" style={armed ? { background: "var(--danger)", borderColor: "var(--danger)", color: "var(--surface)" } : undefined} onClick={() => (armed ? onDelete() : setArmed(true))} onBlur={() => setArmed(false)}>
+            <Trash2 size={14} /> {armed ? "Confirm delete" : "Delete"}
+          </button>
+          <span className="small muted hide-sm" role="status">{armed ? deleteHint || "This can't be undone." : ""}</span>
+        </span>
       )}
       <button type="button" className="btn" onClick={onClose}>
         Cancel
@@ -97,52 +121,51 @@ function Foot({ onDelete, onClose, saveLabel }: { onDelete?: () => void; onClose
 export function TaskForm({ initial, isNew, onClose }: { initial: Task; isNew: boolean; onClose: () => void }) {
   const s = useSettings();
   const [t, setT] = useState<Task>(initial);
-  const [err, setErr] = useState("");
-  const set = (p: Partial<Task>) => setT((x) => ({ ...x, ...p }));
+  const v = useFieldError();
+  const set = (p: Partial<Task>) => (v.clear(), setT((x) => ({ ...x, ...p })));
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    if (!t.title.trim()) return setErr("Give the task a title.");
-    if (!isValidYmd(t.dueDate)) return setErr("Choose a valid due date.");
-    if (t.startDate && t.startDate > t.dueDate) return setErr("The start date must be on or before the due date.");
-    if (!t.allDay && t.startTime && t.endTime && t.endTime < t.startTime) return setErr("The end time must be after the start time.");
+    if (!t.title.trim()) return v.fail("title", "Give the task a title.");
+    if (!isValidYmd(t.dueDate)) return v.fail("due", "Choose a valid due date.");
+    if (t.startDate && t.startDate > t.dueDate) return v.fail("start", "The start date must be on or before the due date.");
+    if (!t.allDay && t.startTime && t.endTime && t.endTime < t.startTime) return v.fail("end", "The end time must be after the start time.");
     saveItem("tasks", { ...t, title: t.title.trim(), completedAt: t.status === "done" ? t.completedAt || Date.now() : undefined });
     toast(isNew ? "Task added" : "Task updated", t.title.trim(), "ok");
     onClose();
   };
   const del = () => {
-    if (!confirm(t.recurrence.freq === "none" ? "Delete this task?" : "Delete this recurring task and all its occurrences?")) return;
     removeItem("tasks", t.id);
     toast("Task deleted");
     onClose();
   };
   return (
-    <Modal title={isNew ? "New task" : "Edit task"} onClose={onClose} footer={<Foot onDelete={isNew ? undefined : del} onClose={onClose} saveLabel={isNew ? "Add task" : "Save changes"} />}>
-      <form id="item-form" className="stack" onSubmit={submit}>
-        <Field label="Title">
-          <input className="input" data-autofocus value={t.title} onChange={(e) => set({ title: e.target.value })} placeholder="What needs doing?" maxLength={200} />
+    <Modal title={isNew ? "New task" : "Edit task"} onClose={onClose} footer={<Foot onDelete={isNew ? undefined : del} deleteHint={t.recurrence.freq === "none" ? undefined : "Deletes every occurrence of this repeating task."} onClose={onClose} saveLabel={isNew ? "Add task" : "Save changes"} />}>
+      <form id="item-form" className="stack" onSubmit={submit} noValidate>
+        <Field label="Title" error={v.msg("title")}>
+          <input className="input" data-autofocus {...v.bind("title")} value={t.title} onChange={(e) => set({ title: e.target.value })} placeholder="What needs doing?" maxLength={200} />
         </Field>
         <Field label="Description">
           <textarea className="textarea" value={t.description || ""} onChange={(e) => set({ description: e.target.value })} rows={2} />
         </Field>
-        <div className="grid2">
-          <Field label="Start date">
-            <input className="input" type="date" value={t.startDate || ""} onChange={(e) => set({ startDate: e.target.value || undefined })} />
+        <div className="grid2 keep">
+          <Field label="Start date" error={v.msg("start")}>
+            <input className="input" type="date" {...v.bind("start")} value={t.startDate || ""} onChange={(e) => set({ startDate: e.target.value || undefined })} />
           </Field>
-          <Field label="Due date">
-            <input className="input" type="date" required value={t.dueDate} onChange={(e) => set({ dueDate: e.target.value })} />
+          <Field label="Due date" error={v.msg("due")}>
+            <input className="input" type="date" required {...v.bind("due")} value={t.dueDate} onChange={(e) => set({ dueDate: e.target.value })} />
           </Field>
         </div>
-        <div className="row between">
+        <div className="switch-row">
           <span className="label">All-day task</span>
           <Switch checked={t.allDay} onChange={(v) => set({ allDay: v, startTime: v ? undefined : t.startTime || "09:00", endTime: v ? undefined : t.endTime || "10:00" })} label="All-day task" />
         </div>
         {!t.allDay && (
-          <div className="grid2">
+          <div className="grid2 keep">
             <Field label="Start time">
               <input className="input" type="time" value={t.startTime || ""} onChange={(e) => set({ startTime: e.target.value })} />
             </Field>
-            <Field label="End time">
-              <input className="input" type="time" value={t.endTime || ""} onChange={(e) => set({ endTime: e.target.value })} />
+            <Field label="End time" error={v.msg("end")}>
+              <input className="input" type="time" {...v.bind("end")} value={t.endTime || ""} onChange={(e) => set({ endTime: e.target.value })} />
             </Field>
           </div>
         )}
@@ -173,7 +196,6 @@ export function TaskForm({ initial, isNew, onClose }: { initial: Task; isNew: bo
         <Field label="Notes">
           <textarea className="textarea" value={t.notes || ""} onChange={(e) => set({ notes: e.target.value })} rows={2} placeholder="Anything else worth remembering" />
         </Field>
-        {err && <div className="notice err" role="alert">{err}</div>}
       </form>
     </Modal>
   );
@@ -184,12 +206,13 @@ const LEADS: [number, string][] = [[0, "At the scheduled time"], [5, "5 minutes 
 export function ReminderForm({ initial, isNew, onClose }: { initial: Reminder; isNew: boolean; onClose: () => void }) {
   const [r, setR] = useState<Reminder>(initial);
   const [custom, setCustom] = useState(!LEADS.some(([m]) => m === initial.lead));
-  const [err, setErr] = useState("");
-  const set = (p: Partial<Reminder>) => setR((x) => ({ ...x, ...p }));
+  const v = useFieldError();
+  const set = (p: Partial<Reminder>) => (v.clear(), setR((x) => ({ ...x, ...p })));
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    if (!r.message.trim()) return setErr("Write the reminder message.");
-    if (!isValidYmd(r.date) || !r.time) return setErr("Choose a date and time.");
+    if (!r.message.trim()) return v.fail("message", "Write the reminder message.");
+    if (!isValidYmd(r.date)) return v.fail("date", "Choose a valid date.");
+    if (!r.time) return v.fail("time", "Choose a time.");
     // changing when it is due re-arms the notification
     const rearm = r.date !== initial.date || r.time !== initial.time || r.lead !== initial.lead;
     saveItem("reminders", { ...r, message: r.message.trim(), fired: rearm ? [] : r.fired });
@@ -197,23 +220,22 @@ export function ReminderForm({ initial, isNew, onClose }: { initial: Reminder; i
     onClose();
   };
   const del = () => {
-    if (!confirm("Delete this reminder?")) return;
     removeItem("reminders", r.id);
     toast("Reminder deleted");
     onClose();
   };
   return (
     <Modal title={isNew ? "New reminder" : "Edit reminder"} onClose={onClose} footer={<Foot onDelete={isNew ? undefined : del} onClose={onClose} saveLabel={isNew ? "Set reminder" : "Save changes"} />}>
-      <form id="item-form" className="stack" onSubmit={submit}>
-        <Field label="Message">
-          <input className="input" data-autofocus value={r.message} onChange={(e) => set({ message: e.target.value })} placeholder="Remind me to…" maxLength={200} />
+      <form id="item-form" className="stack" onSubmit={submit} noValidate>
+        <Field label="Message" error={v.msg("message")}>
+          <input className="input" data-autofocus {...v.bind("message")} value={r.message} onChange={(e) => set({ message: e.target.value })} placeholder="Remind me to…" maxLength={200} />
         </Field>
-        <div className="grid2">
-          <Field label="Date">
-            <input className="input" type="date" required value={r.date} onChange={(e) => set({ date: e.target.value })} />
+        <div className="grid2 keep">
+          <Field label="Date" error={v.msg("date")}>
+            <input className="input" type="date" required {...v.bind("date")} value={r.date} onChange={(e) => set({ date: e.target.value })} />
           </Field>
-          <Field label="Time">
-            <input className="input" type="time" required value={r.time} onChange={(e) => set({ time: e.target.value })} />
+          <Field label="Time" error={v.msg("time")}>
+            <input className="input" type="time" required {...v.bind("time")} value={r.time} onChange={(e) => set({ time: e.target.value })} />
           </Field>
         </div>
         <div className="grid2">
@@ -239,7 +261,6 @@ export function ReminderForm({ initial, isNew, onClose }: { initial: Reminder; i
           )}
         </div>
         <RecurrenceEditor value={r.recurrence} onChange={(rec) => set({ recurrence: rec })} start={r.date} />
-        {err && <div className="notice err" role="alert">{err}</div>}
       </form>
     </Modal>
   );
@@ -248,31 +269,31 @@ export function ReminderForm({ initial, isNew, onClose }: { initial: Reminder; i
 export function EventForm({ initial, isNew, onClose }: { initial: CalEvent; isNew: boolean; onClose: () => void }) {
   const s = useSettings();
   const [ev, setEv] = useState<CalEvent>(initial);
-  const [err, setErr] = useState("");
-  const set = (p: Partial<CalEvent>) => setEv((x) => ({ ...x, ...p }));
+  const v = useFieldError();
+  const set = (p: Partial<CalEvent>) => (v.clear(), setEv((x) => ({ ...x, ...p })));
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    if (!ev.title.trim()) return setErr("Give the event a title.");
-    if (!isValidYmd(ev.date)) return setErr("Choose a valid date.");
+    if (!ev.title.trim()) return v.fail("title", "Give the event a title.");
+    if (!isValidYmd(ev.date)) return v.fail("date", "Choose a valid date.");
+    if (!ev.allDay && ev.startTime && ev.endTime && ev.endTime < ev.startTime) return v.fail("end", "The end time must be after the start time.");
     saveItem("events", { ...ev, title: ev.title.trim() });
     toast(isNew ? "Event added" : "Event updated", ev.title.trim(), "ok");
     onClose();
   };
   const del = () => {
-    if (!confirm("Delete this event?")) return;
     removeItem("events", ev.id);
     toast("Event deleted");
     onClose();
   };
   return (
     <Modal title={isNew ? "New event" : "Edit event"} onClose={onClose} footer={<Foot onDelete={isNew ? undefined : del} onClose={onClose} saveLabel={isNew ? "Add event" : "Save changes"} />}>
-      <form id="item-form" className="stack" onSubmit={submit}>
-        <Field label="Title">
-          <input className="input" data-autofocus value={ev.title} onChange={(e) => set({ title: e.target.value })} placeholder="Team standup, gym, anniversary…" maxLength={200} />
+      <form id="item-form" className="stack" onSubmit={submit} noValidate>
+        <Field label="Title" error={v.msg("title")}>
+          <input className="input" data-autofocus {...v.bind("title")} value={ev.title} onChange={(e) => set({ title: e.target.value })} placeholder="Team standup, gym, anniversary…" maxLength={200} />
         </Field>
-        <div className="grid2">
-          <Field label="Date">
-            <input className="input" type="date" required value={ev.date} onChange={(e) => set({ date: e.target.value })} />
+        <div className="grid2 keep">
+          <Field label="Date" error={v.msg("date")}>
+            <input className="input" type="date" required {...v.bind("date")} value={ev.date} onChange={(e) => set({ date: e.target.value })} />
           </Field>
           <Field label="Category">
             <select className="select" value={ev.category} onChange={(e) => set({ category: e.target.value })}>
@@ -282,17 +303,17 @@ export function EventForm({ initial, isNew, onClose }: { initial: CalEvent; isNe
             </select>
           </Field>
         </div>
-        <div className="row between">
+        <div className="switch-row">
           <span className="label">All-day event</span>
           <Switch checked={ev.allDay} onChange={(v) => set({ allDay: v, startTime: v ? undefined : ev.startTime || "09:00", endTime: v ? undefined : ev.endTime || "10:00" })} label="All-day event" />
         </div>
         {!ev.allDay && (
-          <div className="grid2">
+          <div className="grid2 keep">
             <Field label="Start time">
               <input className="input" type="time" value={ev.startTime || ""} onChange={(e) => set({ startTime: e.target.value })} />
             </Field>
-            <Field label="End time">
-              <input className="input" type="time" value={ev.endTime || ""} onChange={(e) => set({ endTime: e.target.value })} />
+            <Field label="End time" error={v.msg("end")}>
+              <input className="input" type="time" {...v.bind("end")} value={ev.endTime || ""} onChange={(e) => set({ endTime: e.target.value })} />
             </Field>
           </div>
         )}
@@ -300,7 +321,6 @@ export function EventForm({ initial, isNew, onClose }: { initial: CalEvent; isNe
         <Field label="Description">
           <textarea className="textarea" value={ev.description || ""} onChange={(e) => set({ description: e.target.value })} rows={2} />
         </Field>
-        {err && <div className="notice err" role="alert">{err}</div>}
       </form>
     </Modal>
   );
@@ -329,7 +349,7 @@ export function BirthdaysModal({ onClose }: { onClose: () => void }) {
         <Field label="Person">
           <input className="input" data-autofocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" maxLength={80} />
         </Field>
-        <div className="grid3">
+        <div className="grid3 bday-grid">
           <Field label="Month">
             <select className="select" value={month} onChange={(e) => setMonth(+e.target.value)}>
               {MONTHS.map((m, i) => (
@@ -345,12 +365,14 @@ export function BirthdaysModal({ onClose }: { onClose: () => void }) {
           </Field>
         </div>
         <button className="btn primary" type="submit" disabled={!name.trim()}>
-          Add birthday
+          <Plus size={16} /> Add birthday
         </button>
       </form>
+      <div className="form-group">
+        <h3 className="eyebrow" style={{ margin: 0 }}>Saved birthdays{sorted.length ? ` · ${sorted.length}` : ""}</h3>
       <div className="card list">
         {sorted.length === 0 ? (
-          <Empty title="No birthdays yet">Add birthdays to see them on the calendar every year.</Empty>
+          <Empty title="No birthdays yet">Add a name and date above to see it on the calendar every year.</Empty>
         ) : (
           sorted.map((b) => (
             <div className="list-row" key={b.id} style={{ alignItems: "center" }}>
@@ -362,12 +384,13 @@ export function BirthdaysModal({ onClose }: { onClose: () => void }) {
                   {b.year ? ` · ${b.year}` : ""} · {relDays(nextBirthday(b))}
                 </div>
               </div>
-              <button className="btn ghost icon sm danger" aria-label={`Delete ${b.name}'s birthday`} onClick={() => removeItem("birthdays", b.id)}>
+              <button className="btn ghost icon sm danger" aria-label={`Delete ${b.name}'s birthday`} title="Delete" onClick={() => (removeItem("birthdays", b.id), toast("Birthday deleted", b.name))}>
                 <Trash2 size={14} />
               </button>
             </div>
           ))
         )}
+      </div>
       </div>
     </Modal>
   );

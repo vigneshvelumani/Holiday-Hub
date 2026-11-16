@@ -1,5 +1,5 @@
 import "./astrology.css";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Check, ChevronLeft, ChevronRight, ExternalLink, Moon, Sunrise, Sunset } from "lucide-react";
 import { addDays, fmt, fmtLong, isValidYmd, parseYmd, relDays, today, ymd, WEEKDAYS } from "../lib/dates.ts";
 import { fmtInZone, lunarObservances, moonEvents, panchangam, planetPositions } from "../lib/astro.ts";
@@ -21,6 +21,9 @@ const PERIODS = [
   { key: "kuligai", label: "Kuligai", short: "Kuligai", code: "K", cls: "kuli", note: "Traditionally avoided for one-off events" },
   { key: "abhijit", label: "Abhijit", short: "Abhijit", code: "A", cls: "abhi", note: "The midday muhurta, considered favourable" },
 ] as const;
+// the range the date control accepts: the calculations are not meaningful far outside it
+const MIN_DATE = "1900-01-01";
+const MAX_DATE = "2100-12-31";
 const PHASE_ELONGATION = { "New Moon": 0, "First Quarter": 90, "Full Moon": 180, "Last Quarter": 270 } as const;
 
 /** Whole clock hours (in the place's time zone) between two instants. */
@@ -44,7 +47,16 @@ export function AstrologyPage() {
   const ui = useUi();
   const s = useSettings();
   const now = useNow(60000);
-  const [date, setDate] = useState(ymd(today()));
+  const [date, setDateRaw] = useState(ymd(today()));
+  // what is typed in the date field; it only becomes the date once it is a real day inside the range,
+  // so typing a year digit by digit never jumps the almanac to the year 2 or 20
+  const [draft, setDraft] = useState(date);
+  const setDate = (k: string) => {
+    if (!isValidYmd(k) || k < MIN_DATE || k > MAX_DATE) return;
+    setDateRaw(k);
+    setDraft(k);
+  };
+  const reading = useRef<HTMLDivElement>(null);
   const tz = s.location.tz;
   const t = (d: Date | null | undefined, day = false) => fmtInZone(d, tz, s.hour12, day);
   const span = (r: [Date, Date] | null) => (r ? `${t(r[0])} – ${t(r[1])}` : "—");
@@ -73,6 +85,20 @@ export function AstrologyPage() {
   const dur = (ms: number) => {
     const m = Math.max(0, Math.round(ms / 60000));
     return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`;
+  };
+  const relFar = (x: Date) => {
+    const days = Math.round((x.getTime() - today().getTime()) / 86400000);
+    if (Math.abs(days) <= 400) return relDays(x);
+    const y = Math.round(Math.abs(days) / 365.25);
+    return days < 0 ? `about ${y} year${y === 1 ? "" : "s"} ago` : `in about ${y} year${y === 1 ? "" : "s"}`;
+  };
+  const pickSign = (z: string) => {
+    const next = s.zodiac === z ? null : z;
+    updateSettings({ zodiac: next });
+    if (!next) return;
+    // the reading sits below the sign grid: bring it into view so the choice visibly did something
+    const reduce = typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+    requestAnimationFrame(() => reading.current?.scrollIntoView({ block: "nearest", behavior: reduce ? "auto" : "smooth" }));
   };
   const until = (x: Date) => {
     const ms = x.getTime() - now.getTime();
@@ -105,9 +131,23 @@ export function AstrologyPage() {
       <section className="as-hero" aria-label="Moon and tithi for the selected date">
         <div className="as-hero-bar">
           <div className="as-datenav" role="group" aria-label="Choose a date">
-            <button type="button" className="as-hbtn" aria-label="Previous day" title="Previous day" onClick={() => setDate(ymd(addDays(d, -1)))}><ChevronLeft size={18} /></button>
-            <input className="as-date" type="date" value={date} onChange={(e) => isValidYmd(e.target.value) && setDate(e.target.value)} aria-label="Date" />
-            <button type="button" className="as-hbtn" aria-label="Next day" title="Next day" onClick={() => setDate(ymd(addDays(d, 1)))}><ChevronRight size={18} /></button>
+            <button type="button" className="as-hbtn" aria-label="Previous day" title="Previous day" disabled={date <= MIN_DATE} onClick={() => setDate(ymd(addDays(d, -1)))}><ChevronLeft size={18} /></button>
+            <input
+              className="as-date"
+              type="date"
+              value={draft}
+              min={MIN_DATE}
+              max={MAX_DATE}
+              onChange={(e) => {
+                const v = e.target.value;
+                setDraft(v);
+                if (isValidYmd(v) && v >= MIN_DATE && v <= MAX_DATE) setDateRaw(v);
+              }}
+              onBlur={() => setDraft(date)}
+              aria-label="Date"
+              title="Any date from 1900 to 2100"
+            />
+            <button type="button" className="as-hbtn" aria-label="Next day" title="Next day" disabled={date >= MAX_DATE} onClick={() => setDate(ymd(addDays(d, 1)))}><ChevronRight size={18} /></button>
             <button type="button" className="as-hbtn text" onClick={() => setDate(ymd(today()))} disabled={isToday} aria-label={isToday ? "Today (showing today)" : "Go to today"}>Today</button>
           </div>
           <LocationChip light onOpen={ui.openLocation} />
@@ -117,7 +157,7 @@ export function AstrologyPage() {
           <div className="as-hero-main">
             <div className="as-hero-moon"><MoonDisc elongation={p.moon.elongation} size={176} dark /></div>
             <div className="as-hero-text">
-              <p className="as-hero-date">{fmtLong(d)} <span>· {relDays(d)}</span></p>
+              <p className="as-hero-date">{fmtLong(d)} <span>· {relFar(d)}</span></p>
               <h2 className="as-hero-phase">{p.moon.phaseName}</h2>
               <p className="as-hero-lit"><span className="num">{(p.moon.illumination * 100).toFixed(0)}%</span> illuminated · {waxing ? "waxing" : "waning"}</p>
               <dl className="as-hero-facts">
@@ -266,7 +306,7 @@ export function AstrologyPage() {
                       </span>
                     ))}
                   </div>
-                  {nowInDay && <div className="as-now" style={{ left: `${nowPct}%` }}><span className="num">Now {t(now)}</span></div>}
+                  {nowInDay && <div className={"as-now" + (nowPct < 14 ? " at-start" : nowPct > 86 ? " at-end" : "")} style={{ left: `${nowPct}%` }}><span className="num">Now {t(now)}</span></div>}
                 </div>
                 <div className="as-tl-ends num">
                   <span>Sunrise {t(p.sunrise)}</span>
@@ -341,7 +381,7 @@ export function AstrologyPage() {
                     const [rashi, ...en] = pl.rashi.split(" ");
                     return (
                       <tr key={pl.name}>
-                        <th scope="row"><span className="abbr" aria-hidden>{GRAHA_SHORT[name] || name.slice(0, 2)}</span><span>{name}<small>{rest.join(" ").replace(/[()]/g, "")}</small></span></th>
+                        <th scope="row"><span className="g"><span className="abbr" aria-hidden>{GRAHA_SHORT[name] || name.slice(0, 2)}</span><span>{name}<small>{rest.join(" ").replace(/[()]/g, "")}</small></span></span></th>
                         <td>{rashi}<small>{en.join(" ").replace(/[()]/g, "")}</small></td>
                         <td className="num r">{Math.floor(pl.degreeInSign)}° {String(Math.floor((pl.degreeInSign % 1) * 60)).padStart(2, "0")}′</td>
                         <td>{pl.nakshatra || "—"}</td>
@@ -357,7 +397,7 @@ export function AstrologyPage() {
       )}
 
       {/* ── observances and festivals ── */}
-      <div className="as-grid two as-gap">
+      <div className="as-grid two as-pair as-gap">
         <section className="panel" aria-labelledby="h-obs">
           <div className="panel-head"><h2 id="h-obs">Auspicious &amp; observance days</h2><span className="as-head-note">next 45 days · by the tithi at sunrise</span></div>
           {calc.obs.length === 0 ? <p className="note-state">None in this period.</p> : (
@@ -405,20 +445,20 @@ export function AstrologyPage() {
         </div>
         <div className="as-signs" role="group" aria-label="Zodiac sign">
           {ZODIAC.map((z, i) => (
-            <button key={z} type="button" aria-pressed={s.zodiac === z} onClick={() => updateSettings({ zodiac: s.zodiac === z ? null : z })}>
+            <button key={z} type="button" aria-pressed={s.zodiac === z} onClick={() => pickSign(z)}>
               <span className="n">{s.zodiac === z && <Check size={14} strokeWidth={3} aria-hidden />}{z}</span>
               <span className="dt">{ZODIAC_DATES[i]}</span>
             </button>
           ))}
         </div>
-        <div className="as-reading" aria-live="polite">
+        <div className="as-reading" aria-live="polite" ref={reading}>
           {!s.zodiac && <p className="note-state">Choose your sign to read today's forecast.</p>}
           {s.zodiac && h.loading && !h.data && (
             <div className="as-skel" role="status" aria-label={`Loading today's forecast for ${s.zodiac}`}>
               <div className="skeleton" style={{ height: 18 }} /><div className="skeleton" style={{ height: 18, width: "82%" }} /><div className="skeleton" style={{ height: 18, width: "60%" }} />
             </div>
           )}
-          {s.zodiac && h.error && <ErrorNote message={h.error} onRetry={h.refresh} stale={h.stale} />}
+          {s.zodiac && h.error && <ErrorNote message={`Today's forecast for ${s.zodiac} couldn't be loaded: ${h.error.replace(/[.\s]+$/, "")}.`} onRetry={h.refresh} stale={h.stale} />}
           {s.zodiac && h.data && (
             <article key={s.zodiac}>
               <p className="eyebrow">{s.zodiac} · {fmt(today(), { weekday: "long", day: "numeric", month: "long" })}{h.loading ? " · refreshing…" : ""}</p>

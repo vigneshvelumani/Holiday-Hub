@@ -36,25 +36,27 @@ function WeekView({ focus, onSelect, data, s, filter, weather }: { focus: Date; 
         const sat = s.layers.officeSaturday ? officeSaturday(d) : null;
         const w = weather.get(ymd(d));
         const items = itemsOn(d, data, s, filter);
+        const isToday = sameDay(d, now);
         return (
           <div className={`week-col ${sat === "off" ? "sat-off" : sat === "working" ? "sat-working" : ""}`} key={ymd(d)}>
-            <button className={"week-head" + (sameDay(d, now) ? " today" : "")} onClick={() => onSelect(d)} aria-label={fmtLong(d)}>
+            <button className={"week-head" + (isToday ? " today" : "")} onClick={() => onSelect(d)} aria-current={isToday ? "date" : undefined} aria-label={`${isToday ? "Today, " : ""}${fmtLong(d)}${sat ? ", " + SATURDAY_LABEL[sat].long : ""}${items.length ? `, ${items.length} item${items.length === 1 ? "" : "s"}` : ""}. Open the day`}>
               <span className="row between">
-                <span className="eyebrow" style={d.getDay() === 0 ? { color: "var(--danger)" } : undefined}>{DOW[d.getDay()]}</span>
+                <span className={"wd" + (d.getDay() === 0 && !isToday ? " sun" : "")}>{DOW[d.getDay()]}</span>
                 {w && (
-                  <span className="row xs muted num" style={{ gap: 3 }}>
-                    <WeatherIcon code={w.code} size={12} /> {Math.round(w.tmax)}°
+                  <span className="wx num" title={`${weatherLabel(w.code)}, ${Math.round(w.tmax)}° / ${Math.round(w.tmin)}°`}>
+                    <WeatherIcon code={w.code} size={13} /> {Math.round(w.tmax)}°
                   </span>
                 )}
               </span>
-              <span className="display" style={{ fontSize: 22, lineHeight: 1 }}>{d.getDate()}</span>
-              {sat && <SatTag status={sat} />}
+              <span className="wn num">{d.getDate()}</span>
+              {isToday && <span className="wk-today">Today</span>}
             </button>
             <div className="week-body">
-              {items.length === 0 && <span className="xs muted">—</span>}
+              {items.length === 0 && !sat && <span className="week-none">Nothing scheduled</span>}
               {items.map((i) => (
                 <ItemChip key={i.key} item={i} onClick={onItem} hour12={s.hour12} />
               ))}
+              {sat && <span className="cell-sat"><SatTag status={sat} size="lg" /></span>}
             </div>
           </div>
         );
@@ -71,17 +73,27 @@ function DayTimeline({ date, data, s, filter }: { date: Date; data: DataState; s
   const allDay = items.filter((i) => !i.time);
   const isToday = sameDay(date, today());
   const nowHour = new Date().getHours();
+  const sat = s.layers.officeSaturday ? officeSaturday(date) : null;
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    ref.current?.querySelector(`[data-hour="${isToday ? Math.max(0, nowHour - 1) : 7}"]`)?.scrollIntoView({ block: "start" });
+    // scroll only the timeline — scrollIntoView would also drag the whole page under the sticky header
+    const box = ref.current;
+    const row = box?.querySelector<HTMLElement>(`[data-hour="${isToday ? Math.max(0, nowHour - 1) : 7}"]`);
+    if (box && row) box.scrollTop = row.offsetTop - box.offsetTop;
   }, [ymd(date)]);
   return (
     <div className="stack">
-      <div className="card card-pad stack tight">
-        <span className="eyebrow">All day</span>
+      <div className="card card-pad stack day-allday">
+        <div className="row between wrap">
+          <span className="eyebrow">All day</span>
+          <span className="row wrap">
+            {sat && <SatTag status={sat} size="lg" long />}
+            <button className="btn sm" onClick={() => ui.openDay(date)}>Open day details</button>
+          </span>
+        </div>
         {allDay.length === 0 ? <span className="small muted">Nothing scheduled all day.</span> : allDay.map((i) => <ItemChip key={i.key} item={i} onClick={onItem} hour12={s.hour12} />)}
       </div>
-      <div className="timeline" ref={ref} style={{ maxHeight: 620, overflowY: "auto" }}>
+      <div className="timeline" ref={ref} role="group" aria-label="Hours of the day. Choose an hour to add a task at that time.">
         {Array.from({ length: 24 }, (_, h) => {
           const here = items.filter((i) => i.time && Number(i.time.slice(0, 2)) === h);
           const hh = String(h).padStart(2, "0") + ":00";
@@ -92,11 +104,11 @@ function DayTimeline({ date, data, s, filter }: { date: Date; data: DataState; s
               data-hour={h}
               role="button"
               tabIndex={0}
-              aria-label={`Add a task at ${fmtTime(hh, s.hour12)}`}
+              aria-label={`${isToday && h === nowHour ? "Now. " : ""}Add a task at ${fmtTime(hh, s.hour12)}`}
               onClick={() => ui.editTask(null, ymd(date), { allDay: false, startTime: hh, endTime: String(Math.min(23, h + 1)).padStart(2, "0") + ":00" })}
-              onKeyDown={(e) => e.key === "Enter" && ui.editTask(null, ymd(date), { allDay: false, startTime: hh })}
+              onKeyDown={(e) => e.target === e.currentTarget && (e.key === "Enter" || e.key === " ") && (e.preventDefault(), ui.editTask(null, ymd(date), { allDay: false, startTime: hh, endTime: String(Math.min(23, h + 1)).padStart(2, "0") + ":00" }))}
             >
-              <div className="hlabel">{fmtTime(hh, s.hour12)}</div>
+              <div className="hlabel">{fmtTime(hh, s.hour12)}{isToday && h === nowHour && <span className="now-tag">Now</span>}</div>
               <div className="hbody">
                 {here.map((i) => (
                   <ItemChip key={i.key} item={i} onClick={onItem} hour12={s.hour12} />
@@ -118,11 +130,11 @@ function YearView({ year, onPick, onMonth, data, s, filter }: { year: number; on
     <>
       <div className="year anim stagger">
         {MONTHS.map((name, m) => (
-          <div className="card mini" key={m}>
-            <button className="mini-title" onClick={() => onMonth(mkDate(year, m, 1))}>{name}</button>
+          <div className={"card mini" + (year === now.getFullYear() && m === now.getMonth() ? " cur" : "")} key={m}>
+            <button className="mini-title" onClick={() => onMonth(mkDate(year, m, 1))} aria-label={`${name} ${year}, open the month`} title="Open this month">{name}</button>
             <div className="mini-grid">
               {dows.map((d) => (
-                <span className="h" key={d}>{DOW[d][0]}</span>
+                <span className="h" key={d} aria-hidden>{DOW[d][0]}</span>
               ))}
               {monthGrid(year, m, s.weekStartsOn).map((d) => {
                 if (d.getMonth() !== m) return <span key={ymd(d)} className="mini-day out" />;
@@ -158,11 +170,11 @@ function AgendaRow({ date, items, s }: { date: Date; items: DayItem[]; s: Settin
   const onItem = useItemClick();
   const sat = s.layers.officeSaturday ? officeSaturday(date) : null;
   return (
-    <div className={"agenda-day" + (sat === "off" ? " sat-off" : sat === "working" ? " sat-working" : "")}>
+    <div className={"agenda-day" + (sat === "off" ? " sat-off" : sat === "working" ? " sat-working" : "") + (sameDay(date, today()) ? " is-today" : "")}>
       <button className="agenda-date" onClick={() => ui.openDay(date)} aria-label={`Open ${fmtLong(date)}`}>
         <div className="d num">{date.getDate()}</div>
-        <div className="small muted">{fmt(date, { weekday: "short", month: "short" })}</div>
-        <div className="xs muted">{relDays(date)}</div>
+        <div className="w">{fmt(date, { weekday: "short" })} · {fmt(date, { month: "short" })}</div>
+        <div className="r">{relDays(date)}</div>
       </button>
       <div className="stack tight">
         {sat && <div><SatTag status={sat} size="lg" long /></div>}
@@ -198,9 +210,9 @@ function AgendaView({ from, data, s, filter }: { from: Date; data: DataState; s:
           <AgendaRow key={ymd(r.date)} date={r.date} items={r.items} s={s} />
         ))}
       </div>
-      <div className="card-pad row between" style={{ borderTop: "1px solid var(--line)" }}>
+      <div className="agenda-foot">
         <span className="small muted">Showing {span} days from {fmt(from, { day: "numeric", month: "short", year: "numeric" })}</span>
-        <button className="btn sm" onClick={() => setSpan((n) => n + 45)}>Show 45 more days</button>
+        <button className="btn sm" onClick={() => setSpan((n) => n + 45)}><Plus size={14} /> Show 45 more days</button>
       </div>
     </div>
   );
@@ -229,7 +241,7 @@ function UpcomingView({ data, s, filter }: { data: DataState; s: Settings; filte
         <div className="card-head"><h2 className="card-title"><Lock size={13} /> Office Saturdays</h2><span className="xs muted">fixed schedule</span></div>
         <div className="list">
           {sats.map((d) => (
-            <button key={ymd(d)} className={"list-row click " + (officeSaturday(d) === "off" ? "sat-off" : "sat-working")} style={{ border: 0, width: "100%", background: "none", textAlign: "left", alignItems: "center" }} onClick={() => ui.openDay(d)}>
+            <button key={ymd(d)} className={"list-row click " + (officeSaturday(d) === "off" ? "sat-off" : "sat-working")} style={{ border: 0, width: "100%", textAlign: "left", alignItems: "center", color: "inherit" }} onClick={() => ui.openDay(d)}>
               <div className="grow">
                 <div className="strong">{fmt(d, { day: "numeric", month: "long", year: "numeric" })}</div>
                 <div className="small muted">{relDays(d)}</div>
@@ -276,14 +288,25 @@ export function CategoryChips({ s }: { s: Settings }) {
   );
 }
 
+/** Shared by the two toolbar popovers: focus moves in, an outside click or Escape closes, Escape returns focus to the opener. */
+function popoverBehaviour(pop: HTMLElement | null, onClose: () => void) {
+  const wrap = pop?.parentElement;
+  pop?.querySelector<HTMLElement>("[data-autofocus]")?.focus({ preventScroll: true });
+  const away = (e: MouseEvent) => wrap && !wrap.contains(e.target as Node) && onClose();
+  const esc = (e: KeyboardEvent) => {
+    if (e.key !== "Escape") return;
+    if (wrap?.contains(document.activeElement)) wrap.querySelector<HTMLElement>("[aria-haspopup]")?.focus();
+    onClose();
+  };
+  document.addEventListener("mousedown", away);
+  document.addEventListener("keydown", esc);
+  return () => (document.removeEventListener("mousedown", away), document.removeEventListener("keydown", esc));
+}
+
 function Filters({ s, filter, setFilter, onClose }: { s: Settings; filter: ItemFilter; setFilter: (f: ItemFilter) => void; onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const away = (e: MouseEvent) => ref.current && !ref.current.parentElement!.contains(e.target as Node) && onClose();
-    const esc = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    document.addEventListener("mousedown", away);
-    document.addEventListener("keydown", esc);
-    return () => (document.removeEventListener("mousedown", away), document.removeEventListener("keydown", esc));
+    return popoverBehaviour(ref.current, onClose);
   }, []);
   const types = filter.types;
   const toggleType = (t: ItemType) => {
@@ -298,12 +321,12 @@ function Filters({ s, filter, setFilter, onClose }: { s: Settings; filter: ItemF
     </div>
   );
   return (
-    <div className="pop stack" ref={ref} style={{ right: 0, top: 40, width: "min(340px, calc(100vw - 24px))", maxHeight: "70vh", overflowY: "auto" }} role="dialog" aria-label="Calendar filters">
-      <div className="stack tight">
+    <div className="pop pop-filters stack" ref={ref} role="dialog" aria-label="Calendar filters">
+      <label className="stack tight">
         <span className="eyebrow">Search this calendar</span>
-        <input className="input" placeholder="Filter by text…" value={filter.text || ""} onChange={(e) => setFilter({ ...filter, text: e.target.value || undefined })} />
-      </div>
-      <div className="stack tight">
+        <input className="input" data-autofocus placeholder="Filter by text…" value={filter.text || ""} onChange={(e) => setFilter({ ...filter, text: e.target.value || undefined })} />
+      </label>
+      <div className="stack tight" role="group" aria-label="Event type">
         <span className="eyebrow">Event type</span>
         <div className="row wrap">
           {TYPE_LABEL.map(([t, l]) => (
@@ -341,7 +364,10 @@ function Filters({ s, filter, setFilter, onClose }: { s: Settings; filter: ItemF
         {layer("notes", "Note markers")}
         {layer("salary", "Salary day")}
       </div>
-      <button className="btn sm" onClick={() => setFilter({})}>Clear filters</button>
+      <div className="row between">
+        <button className="btn sm" onClick={() => setFilter({})} disabled={!filter.types && !filter.taskCategory && !filter.priority && !filter.text}>Clear filters</button>
+        <button className="btn sm primary" onClick={onClose}>Done</button>
+      </div>
     </div>
   );
 }
@@ -351,19 +377,15 @@ function JumpTo({ focus, onGo, onClose }: { focus: Date; onGo: (d: Date) => void
   const [m, setM] = useState(focus.getMonth());
   const [y, setY] = useState(String(focus.getFullYear()));
   useEffect(() => {
-    const away = (e: MouseEvent) => ref.current && !ref.current.parentElement!.contains(e.target as Node) && onClose();
-    const esc = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    document.addEventListener("mousedown", away);
-    document.addEventListener("keydown", esc);
-    return () => (document.removeEventListener("mousedown", away), document.removeEventListener("keydown", esc));
+    return popoverBehaviour(ref.current, onClose);
   }, []);
   const year = Math.floor(Number(y));
   const ok = year >= 1 && year <= 9999;
   return (
-    <div className="pop stack" ref={ref} style={{ left: 0, top: 40, width: 280 }} role="dialog" aria-label="Jump to date">
+    <div className="pop pop-jump stack" ref={ref} role="dialog" aria-label="Jump to date">
       <label className="field">
         <span className="label">Go to a specific date</span>
-        <input className="input" type="date" defaultValue={ymd(focus)} onChange={(e) => e.target.value && e.target.valueAsDate && (onGo(parseYmd(e.target.value)), onClose())} />
+        <input className="input" type="date" data-autofocus defaultValue={ymd(focus)} onChange={(e) => e.target.value && e.target.valueAsDate && (onGo(parseYmd(e.target.value)), onClose())} />
       </label>
       <form className="grid2" onSubmit={(e) => (e.preventDefault(), ok && (onGo(mkDate(year, m, Math.min(focus.getDate(), daysInMonth(year, m)))), onClose()))}>
         <label className="field">
@@ -378,7 +400,7 @@ function JumpTo({ focus, onGo, onClose }: { focus: Date; onGo: (d: Date) => void
         </label>
         <button className="btn primary" type="submit" disabled={!ok} style={{ gridColumn: "1 / -1" }}>Go</button>
       </form>
-      <span className="hint xs muted">Any year from 1 to 9999 — the calendar has no fixed range.</span>
+      <span className="hint xs muted">{ok ? "Any year from 1 to 9999 — the calendar has no fixed range." : <span role="alert" style={{ color: "var(--danger)", fontWeight: 700 }}>Enter a year between 1 and 9999.</span>}</span>
     </div>
   );
 }
@@ -421,6 +443,7 @@ export function CalendarPage() {
     return () => window.removeEventListener("keydown", onKey);
   });
 
+  const unit = view === "month" ? "month" : view === "week" ? "week" : view === "day" ? "day" : view === "year" ? "year" : "30 days";
   const wk = weekDays(focus, s.weekStartsOn);
   const title =
     view === "month" ? fmtMonthYear(focus)
@@ -446,31 +469,33 @@ export function CalendarPage() {
     <div className="page">
       <h1 className="sr">Calendar</h1>
       <div className="cal-toolbar">
-        <div className="row">
-          <button className="btn icon" onClick={() => step(-1)} aria-label="Previous" disabled={view === "upcoming"}><ChevronLeft size={16} /></button>
+        <div className="row cal-nav">
+          <button className="btn icon" onClick={() => step(-1)} aria-label={`Previous ${unit}`} title={`Previous ${unit}`} disabled={view === "upcoming"}><ChevronLeft size={18} /></button>
           <button className="btn" onClick={() => ui.setFocus(today())} title="Jump to today (T)">Today</button>
-          <button className="btn icon" onClick={() => step(1)} aria-label="Next" disabled={view === "upcoming"}><ChevronRight size={16} /></button>
+          <button className="btn icon" onClick={() => step(1)} aria-label={`Next ${unit}`} title={`Next ${unit}`} disabled={view === "upcoming"}><ChevronRight size={18} /></button>
         </div>
-        <div className="pop-wrap">
+        <div className="pop-wrap cal-title-wrap">
           <button className="cal-title" onClick={() => setPop(pop === "jump" ? null : "jump")} aria-haspopup="dialog" aria-expanded={pop === "jump"} title="Jump to a date">
-            {title} <ChevronDown size={16} className="muted" />
+            <span className="truncate">{title}</span> <ChevronDown size={16} className="muted" />
           </button>
           {pop === "jump" && <JumpTo focus={focus} onGo={ui.setFocus} onClose={() => setPop(null)} />}
         </div>
         <div className="grow" />
         <Seg value={view} options={VIEWS} onChange={ui.setView} label="Calendar view" />
-        <div className="pop-wrap">
-          <button className="btn" onClick={() => setPop(pop === "filters" ? null : "filters")} aria-haspopup="dialog" aria-expanded={pop === "filters"}>
-            <SlidersHorizontal size={14} /> Filters{activeFilters ? ` (${activeFilters})` : ""}
+        <div className="cal-tools">
+          <div className="pop-wrap">
+            <button className="btn" onClick={() => setPop(pop === "filters" ? null : "filters")} aria-haspopup="dialog" aria-expanded={pop === "filters"}>
+              <SlidersHorizontal size={15} /> Filters{activeFilters ? ` (${activeFilters})` : ""}
+            </button>
+            {pop === "filters" && <Filters s={s} filter={filter} setFilter={setFilter} onClose={() => setPop(null)} />}
+          </div>
+          <button className="btn" onClick={pdf} disabled={exporting} aria-label="Export this month as PDF" title="Export this month as PDF">
+            {exporting ? <Loader2 size={15} className="spin" /> : <FileDown size={15} />} <span className="hide-sm">Export PDF</span>
           </button>
-          {pop === "filters" && <Filters s={s} filter={filter} setFilter={setFilter} onClose={() => setPop(null)} />}
         </div>
-        <button className="btn" onClick={pdf} disabled={exporting} title="Export this month as PDF">
-          {exporting ? <Loader2 size={14} className="spin" /> : <FileDown size={14} />} <span className="hide-sm">Export PDF</span>
-        </button>
       </div>
 
-      <div style={{ marginBottom: 12 }}><CategoryChips s={s} /></div>
+      <div className="cal-chips" role="group" aria-label="Holiday categories shown"><CategoryChips s={s} /></div>
 
       <div>
         <div style={{ minWidth: 0 }} key={view + (view === "month" ? focus.getFullYear() + "-" + focus.getMonth() : "")}>
@@ -484,8 +509,9 @@ export function CalendarPage() {
             <div className="legend">
               <span><SatTag status="working" /> Working Saturday</span>
               <span><SatTag status="off" /> Non-working Saturday</span>
-              <span><Landmark size={11} /> Bank Saturday (2nd / 4th closed)</span>
-              <span className="muted">Click a date to see everything on that day · drag a task, reminder or event to reschedule · ← → move · T today</span>
+              <span><Landmark size={13} /> Bank Saturday (2nd / 4th closed)</span>
+              <span className="muted hide-sm">Select a date to see everything on that day. Drag a task, reminder or event to reschedule it. Arrow keys change the {view}; T returns to today.</span>
+              <span className="muted only-sm">Tap a date to see everything on that day.</span>
             </div>
           )}
         </div>

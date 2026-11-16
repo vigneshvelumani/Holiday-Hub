@@ -145,7 +145,7 @@ export function LocationDialog({ welcome, onClose }: { welcome?: boolean; onClos
                   <input className="input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="e.g. Coimbatore" data-autofocus={!welcome || undefined} />
                 </div>
               </label>
-              <button className="btn" type="submit" disabled={busy || q.trim().length < 2}>{busy ? <Loader2 size={14} className="spin" /> : "Search"}</button>
+              <button className="btn" type="submit" disabled={busy || q.trim().length < 2} aria-label={busy ? "Searching" : undefined}>{busy ? <Loader2 size={14} className="spin" /> : "Search"}</button>
             </form>
             {searchErr && <div className="notice err" role="alert">{searchErr}</div>}
             {results && (

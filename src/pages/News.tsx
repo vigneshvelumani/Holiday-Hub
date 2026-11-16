@@ -9,7 +9,7 @@ import { ArrowLeft, ArrowUpRight, Bookmark as BookmarkIcon, BookmarkCheck, Clock
 import { useNow } from "../lib/clock.ts";
 import { toast } from "../lib/notify.ts";
 import { NEWS_CATEGORIES, getArticle, newsCategory, newsSearchFeed, rememberArticles, useNews, type NewsItem } from "../lib/services.ts";
-import { removeItem, saveItem, useData, type Bookmark } from "../lib/store.ts";
+import { removeItem, saveItem, useData, useSettings, type Bookmark } from "../lib/store.ts";
 import { ErrorNote, useUi } from "../components/ui.tsx";
 import { timeAgo } from "./Dashboard.tsx";
 
@@ -20,12 +20,12 @@ const stamp = (iso: string | null) => (iso ? Date.parse(iso) || 0 : 0);
 const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n).replace(/\s+\S*$/, "") + "…" : s);
 
 /** Clock time for today's stories, the date for older ones. */
-function shortWhen(iso: string | null): string {
+function shortWhen(iso: string | null, hour12: boolean): string {
   const t = stamp(iso);
   if (!t) return "";
   const d = new Date(t);
   return d.toDateString() === new Date().toDateString()
-    ? d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
+    ? d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", hour12 })
     : d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
 }
 
@@ -48,10 +48,12 @@ type Marks = ReturnType<typeof useBookmarks>;
 function Meta({ n, extra }: { n: NewsItem; extra?: string }) {
   return (
     <span className="meta nw-meta">
-      {n.source && <span className="src">{n.source}</span>}
-      {n.pubDate && stamp(n.pubDate) > 0 && <time dateTime={new Date(n.pubDate).toISOString()}>{timeAgo(n.pubDate)}</time>}
-      {n.tag && <span>{n.tag}</span>}
-      {extra && <span>{extra}</span>}
+      <span className="nw-meta-in">
+        {n.source && <span className="src">{n.source}</span>}
+        {n.pubDate && stamp(n.pubDate) > 0 && <time dateTime={new Date(n.pubDate).toISOString()}>{timeAgo(n.pubDate)}</time>}
+        {n.tag && <span>{n.tag}</span>}
+        {extra && <span>{extra}</span>}
+      </span>
     </span>
   );
 }
@@ -59,10 +61,21 @@ function Meta({ n, extra }: { n: NewsItem; extra?: string }) {
 /** The publisher's own picture, or — when there is none or it fails — nothing / a typographic tile. Never a stand-in photo. */
 function Pic({ n, eager, tile }: { n: NewsItem; eager?: boolean; tile?: boolean }) {
   const [bad, setBad] = useState(false);
+  const [ready, setReady] = useState(false);
   if (n.image && !bad) {
     return (
       <span className="nw-pic">
-        <img src={n.image} alt="" loading={eager ? "eager" : "lazy"} decoding="async" referrerPolicy="no-referrer" onError={() => setBad(true)} />
+        <img
+          src={n.image}
+          alt=""
+          className={ready ? "ok" : undefined}
+          loading={eager ? "eager" : "lazy"}
+          decoding="async"
+          referrerPolicy="no-referrer"
+          ref={(el) => void (el && el.complete && el.naturalWidth > 0 && !ready && setReady(true))}
+          onLoad={() => setReady(true)}
+          onError={() => setBad(true)}
+        />
       </span>
     );
   }
@@ -79,15 +92,15 @@ function SaveButton({ n, marks }: { n: NewsItem; marks: Marks }) {
 }
 
 type Variant = "lead" | "side" | "trio" | "duo" | "latest" | "more" | "result";
-function Story({ n, variant, marks, kicker, eager }: { n: NewsItem; variant: Variant; marks: Marks; kicker?: string; eager?: boolean }) {
+function Story({ n, variant, marks, kicker, eager, hour12 = true }: { n: NewsItem; variant: Variant; marks: Marks; kicker?: string; eager?: boolean; hour12?: boolean }) {
   const ui = useUi();
   const lead = variant === "lead";
   const withSummary = lead || variant === "duo" || variant === "result" || (variant === "side" && !n.image);
   const extra = n.related.length ? (lead ? `covered by ${n.related.length + 1} publishers` : `+${n.related.length} publishers`) : undefined;
   return (
     <article className={`nw-item nw-v-${variant}${n.image ? "" : " nw-noimg"}`}>
-      <button type="button" className={(lead ? "lead" : "story") + " nw-story"} onClick={() => ui.readArticle(n.id)}>
-        {variant === "latest" && <span className="nw-when num">{shortWhen(n.pubDate) || "—"}</span>}
+      <button type="button" className={(lead ? "lead" : "story") + " nw-story"} data-story={n.id} title={!lead && n.title.length > 110 ? n.title : undefined} onClick={() => ui.readArticle(n.id)}>
+        {variant === "latest" && <span className="nw-when num">{shortWhen(n.pubDate, hour12) || "—"}</span>}
         {variant !== "latest" && <Pic n={n} eager={eager} tile={variant === "trio"} />}
         <span className="nw-text">
           {kicker && <span className="eyebrow nw-kicker">{kicker}</span>}
@@ -126,7 +139,7 @@ function CategoryTabs({ value, onChange, saved }: { value: string; onChange: (id
   return (
     <div className="tabs2 nw-tabs" role="tablist" aria-label="News categories" ref={box} onKeyDown={onKey}>
       {ids.map((id) => (
-        <button key={id} type="button" role="tab" id={"nw-tab-" + id} aria-selected={value === id} aria-controls="nw-panel" tabIndex={value === id ? 0 : -1} ref={(el) => void (refs.current[id] = el)} onClick={() => onChange(id)}>
+        <button key={id} type="button" role="tab" id={"nw-tab-" + id} className={id === "saved" ? "nw-tab-saved" : undefined} aria-selected={value === id} aria-controls="nw-panel" tabIndex={value === id ? 0 : -1} ref={(el) => void (refs.current[id] = el)} onClick={() => onChange(id)}>
           {id === "saved" ? <><BookmarkIcon size={14} aria-hidden /> Saved ({saved})</> : newsCategory(id)!.label}
         </button>
       ))}
@@ -135,7 +148,7 @@ function CategoryTabs({ value, onChange, saved }: { value: string; onChange: (id
 }
 
 // ── the front page for one category ──────────────────────────────────────────
-function FrontPage({ items, marks, label, trending }: { items: NewsItem[]; marks: Marks; label: string; trending: boolean }) {
+function FrontPage({ items, marks, label, trending, hour12 }: { items: NewsItem[]; marks: Marks; label: string; trending: boolean; hour12: boolean }) {
   const plan = useMemo(() => {
     const lead = items.find((n) => n.image && n.summary) || items[0];
     const pool = items.filter((n) => n !== lead);
@@ -176,7 +189,7 @@ function FrontPage({ items, marks, label, trending }: { items: NewsItem[]; marks
           {latest.length > 0 && (
             <section className="nw-latest" aria-labelledby="nw-h-latest">
               <h2 id="nw-h-latest" className="nw-sec">{trending ? "Trending" : "Latest"}</h2>
-              <div className="nw-latest-list">{latest.map((n) => <Story key={n.id} n={n} variant="latest" marks={marks} />)}</div>
+              <div className="nw-latest-list">{latest.map((n) => <Story key={n.id} n={n} variant="latest" marks={marks} hour12={hour12} />)}</div>
             </section>
           )}
         </div>
@@ -215,6 +228,19 @@ function FrontSkeleton() {
   );
 }
 
+function ResultsSkeleton() {
+  return (
+    <div className="nw-results" role="status" aria-busy="true" aria-label="Loading stories">
+      {Array.from({ length: 6 }, (_, i) => (
+        <div key={i} className="nw-sk-row nw-sk-result">
+          <div className="skeleton" style={{ height: 22, width: i % 2 ? "64%" : "82%" }} />
+          <div className="skeleton" style={{ height: 12, width: "26%" }} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ── reader ───────────────────────────────────────────────────────────────────
 function rank(n: NewsItem, pool: NewsItem[]): NewsItem[] {
   const words = (n.title + " " + n.summary).toLowerCase().match(/[a-z]{5,}/g) || [];
@@ -235,7 +261,7 @@ function RelatedList({ n, pool, label }: { n: NewsItem; pool: NewsItem[]; label:
       <h2 id="h-more" className="nw-sec">{label}</h2>
       <div className="nw-rel-grid">
         {more.map((x) => (
-          <button key={x.id} type="button" className="story nw-story nw-rel" onClick={() => ui.readArticle(x.id)}>
+          <button key={x.id} type="button" className="story nw-story nw-rel" title={x.title.length > 110 ? x.title : undefined} onClick={() => ui.readArticle(x.id)}>
             <Pic n={x} />
             <span className="nw-text">
               <h3>{x.title}</h3>
@@ -253,19 +279,23 @@ function RelatedFromCategory({ n, pool, id, feeds, label }: { n: NewsItem; pool:
   return <RelatedList n={n} pool={data && data.length > 1 ? data : pool} label={data && data.length > 1 ? `More from ${label}` : "Related articles"} />;
 }
 
-function Reader({ id, pool }: { id: string; pool: NewsItem[] }) {
+function Reader({ id, pool, fromList }: { id: string; pool: NewsItem[]; fromList: boolean }) {
   const ui = useUi();
+  const { hour12 } = useSettings();
   const { bookmarks, has, toggle } = useBookmarks();
   const saved = bookmarks.find((b) => b.id === id) as (Bookmark & { link?: string }) | undefined;
   const n = getArticle(id) || (saved && saved.link ? fromBookmark(saved as Bookmark & { link: string }) : undefined);
   const [progress, setProgress] = useState(0);
   const [imgBad, setImgBad] = useState(false);
+  const [imgReady, setImgReady] = useState(false);
+  const [stuck, setStuck] = useState(false);
 
   useEffect(() => {
     window.scrollTo({ top: 0 });
     const on = () => {
       const max = document.documentElement.scrollHeight - innerHeight;
       setProgress(max > 40 ? Math.min(1, scrollY / max) : 1);
+      setStuck(scrollY > 12);
     };
     on();
     window.addEventListener("scroll", on, { passive: true });
@@ -273,7 +303,8 @@ function Reader({ id, pool }: { id: string; pool: NewsItem[] }) {
     return () => (window.removeEventListener("scroll", on), window.removeEventListener("resize", on));
   }, [id]);
 
-  const back = () => (history.length > 1 && document.referrer === "" ? history.back() : (location.hash = "/news"));
+  // "Back to news" must land on the news list: step back only when the list is what we came from
+  const back = () => (fromList && history.length > 1 ? history.back() : (location.hash = "/news"));
   if (!n) {
     return (
       <div className="page nw-page nw-reader">
@@ -317,7 +348,7 @@ function Reader({ id, pool }: { id: string; pool: NewsItem[] }) {
     <div className="page nw-page nw-reader">
       <div className="progress" role="progressbar" aria-label="Reading progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress * 100)}><i style={{ transform: `scaleX(${progress})` }} /></div>
       <article className="reader-page">
-        <div className="reader-bar nw-bar">
+        <div className={"reader-bar nw-bar" + (stuck ? " stuck" : "")}>
           <button type="button" className="btn" onClick={back}><ArrowLeft size={16} /> <span>Back<span className="nw-wide"> to news</span></span></button>
           <span className="grow" />
           <button type="button" className="btn" onClick={() => toggle(n)} aria-pressed={savedNow} aria-label={savedNow ? "Saved — remove from saved articles" : "Save this article"}>{savedNow ? <BookmarkCheck size={16} /> : <BookmarkIcon size={16} />} <span className="nw-wide">{savedNow ? "Saved" : "Save"}</span></button>
@@ -327,17 +358,17 @@ function Reader({ id, pool }: { id: string; pool: NewsItem[] }) {
 
         <header className="nw-head">
           <div className="eyebrow nw-kicker">{catLabel(n.category)}{n.source ? <> <span aria-hidden>·</span> {n.source}</> : null}</div>
-          <h1>{n.title}</h1>
+          <h1 className={n.title.length > 150 ? "nw-xlong" : n.title.length > 95 ? "nw-long" : undefined}>{n.title}</h1>
           <div className="nw-byline">
             {n.author && <span>By <strong>{n.author}</strong></span>}
-            {when && <time dateTime={when.toISOString()}>{when.toLocaleString(undefined, { weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "numeric", minute: "2-digit" })} <span className="muted">({timeAgo(n.pubDate!)})</span></time>}
+            {when && <time dateTime={when.toISOString()}>{when.toLocaleString(undefined, { weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "numeric", minute: "2-digit", hour12 })} <span className="muted">({timeAgo(n.pubDate!)})</span></time>}
             {minutes > 0 ? <span><Clock size={13} aria-hidden /> {minutes} min read</span> : !full && body.length > 0 ? <span>Excerpt from the publisher's feed</span> : null}
           </div>
         </header>
 
         {n.image && !imgBad && (
           <figure className="nw-hero">
-            <span className="nw-pic"><img src={n.image} alt="" referrerPolicy="no-referrer" onError={() => setImgBad(true)} /></span>
+            <span className="nw-pic"><img src={n.image} alt="" className={imgReady ? "ok" : undefined} decoding="async" referrerPolicy="no-referrer" ref={(el) => void (el && el.complete && el.naturalWidth > 0 && !imgReady && setImgReady(true))} onLoad={() => setImgReady(true)} onError={() => setImgBad(true)} /></span>
             <figcaption>Image: {publisher}</figcaption>
           </figure>
         )}
@@ -352,7 +383,9 @@ function Reader({ id, pool }: { id: string; pool: NewsItem[] }) {
             <p>
               {full
                 ? `Shown exactly as provided by ${publisher}'s feed. Pictures, updates and anything else are on the original page.`
-                : `${n.source || "The publisher"} shares a summary in its feed, not the whole article, so that is what can be shown here. Holiday Hub does not copy or rewrite articles — the complete story is on their site.`}
+                : body.length > 0
+                  ? `${n.source || "The publisher"} shares a summary in its feed, not the whole article, so that is what can be shown here. Holiday Hub does not copy or rewrite articles — the complete story is on their site.`
+                  : `${n.source || "The publisher"} shares only the headline in its feed, so there is no text to show here. Holiday Hub does not copy or rewrite articles — the complete story is on their site.`}
             </p>
           </div>
           <a className="btn primary nw-pub-go" href={n.link} target="_blank" rel="noopener noreferrer">{full ? "View original" : "Read the full story"} <ArrowUpRight size={16} /><span className="sr"> at {publisher} (opens in a new tab)</span></a>
@@ -394,7 +427,10 @@ export function NewsPage() {
   const [input, setInput] = useState("");
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("");
+  const { hour12 } = useSettings();
   const marks = useBookmarks();
+  const listSeen = useRef(false); // the list was on screen before the reader opened
+  const lastRead = useRef<string | null>(null);
   const { bookmarks } = marks;
   useEffect(() => {
     const on = () => setReading(articleIdFromHash());
@@ -412,12 +448,26 @@ export function NewsPage() {
   const f = filter.trim().toLowerCase();
   const shown = source.filter((n) => !f || (n.title + " " + n.source + " " + n.summary).toLowerCase().includes(f));
 
-  if (reading) return <Reader id={reading} pool={source} key={reading} />;
+  // coming back from an article: put keyboard focus on the story that was opened
+  useEffect(() => {
+    if (reading) {
+      lastRead.current = reading;
+      return;
+    }
+    listSeen.current = true;
+    const id = lastRead.current;
+    lastRead.current = null;
+    if (id) document.querySelector<HTMLElement>(`.nw-sheet [data-story="${id}"]`)?.focus({ preventScroll: true });
+  }, [reading]);
+
+  if (reading) return <Reader id={reading} pool={source} fromList={listSeen.current} key={reading} />;
 
   const front = !showSaved && !query && !f;
   const firstLoad = !showSaved && loading && !data;
   const failed = !showSaved && !!error && !data;
   const label = query ? "Search results" : showSaved ? "Saved articles" : c.label;
+  const why = (error || "").replace(/^Search is unavailable right now\.\s*/, "").replace(/[.\s]+$/, "");
+  const showFilter = firstLoad || source.length > 0;
   const today = new Date().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 
   return (
@@ -429,7 +479,7 @@ export function NewsPage() {
             <p className="page-sub" role="status">
               {showSaved
                 ? `${savedItems.length} saved article${savedItems.length === 1 ? "" : "s"}, kept in this browser`
-                : <><span className="nw-live"><i aria-hidden /> Live</span> {loading && !updatedAt ? "Fetching the latest headlines…" : updatedAt ? `Updated ${timeAgo(updatedAt)}` : "From publisher feeds"} <span className="nw-auto">· refreshes by itself every 10 minutes</span></>}
+                : <><span className={"nw-live" + (error ? " off" : "")}><i aria-hidden /> {error ? (data ? "Saved copy" : "Offline") : "Live"}</span> {loading && !updatedAt ? "Fetching the latest headlines…" : updatedAt ? `Updated ${timeAgo(updatedAt)}` : error ? "The feeds couldn't be reached" : "From publisher feeds"} <span className="nw-auto">· {error ? "tries again by itself" : "refreshes by itself"} every 10 minutes</span></>}
             </p>
             {!showSaved && <button type="button" className="btn sm nw-refresh" onClick={refresh} disabled={loading} title="Only needed if the headlines look out of date"><RefreshCw size={14} className={loading ? "spin" : ""} /> {loading ? "Updating…" : "Refresh now"}</button>}
           </div>
@@ -453,7 +503,7 @@ export function NewsPage() {
       )}
 
       {!showSaved && error && (
-        <div className="nw-note"><ErrorNote message={data ? `Couldn't refresh the news (${error}).` : `News is temporarily unavailable: ${error}`} onRetry={refresh} stale={stale} /></div>
+        <div className="nw-note"><ErrorNote message={data ? `Couldn't refresh the news (${why}).` : `${query ? "Search" : "News"} is temporarily unavailable: ${why}.`} onRetry={data ? refresh : undefined} stale={stale} /></div>
       )}
       {!showSaved && !error && stale && data && (
         <div className="nw-note">
@@ -469,20 +519,22 @@ export function NewsPage() {
         <div className="nw-edition">
           <div className="eyebrow">{today}</div>
           <div className="nw-edition-title">{label}{!firstLoad && source.length > 0 && <span className="nw-count">{f ? `${shown.length} of ${source.length}` : source.length} stor{source.length === 1 ? "y" : "ies"}</span>}</div>
-          <div className="search nw-filter">
-            <ListFilter size={15} aria-hidden />
-            <input className="input" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter these stories…" aria-label="Filter the stories shown" />
-          </div>
+          {showFilter && (
+            <div className="search nw-filter">
+              <ListFilter size={15} aria-hidden />
+              <input className="input" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter these stories…" aria-label="Filter the stories shown" />
+            </div>
+          )}
         </div>
 
-        {firstLoad && <FrontSkeleton />}
+        {firstLoad && (query ? <ResultsSkeleton /> : <FrontSkeleton />)}
 
         {failed && (
           <div className="nw-empty">
             <Newspaper size={30} strokeWidth={1.5} aria-hidden />
-            <strong>The headlines couldn't be loaded</strong>
-            <p>The publisher feeds didn't answer. Check your connection, then try again.</p>
-            <button type="button" className="btn primary" onClick={refresh}><RefreshCw size={14} /> Try again</button>
+            <strong>{query ? "The search couldn't be completed" : "The headlines couldn't be loaded"}</strong>
+            <p>{query ? "The search service didn't answer." : "The publisher feeds didn't answer."} Check your connection, then try again.</p>
+            <button type="button" className="btn primary" onClick={refresh} disabled={loading}><RefreshCw size={14} className={loading ? "spin" : ""} /> {loading ? "Trying…" : "Try again"}</button>
           </div>
         )}
 
@@ -495,7 +547,7 @@ export function NewsPage() {
           </div>
         )}
 
-        {front && shown.length > 0 && <FrontPage items={shown} marks={marks} label={c.label} trending={cat === "trending"} />}
+        {front && shown.length > 0 && <FrontPage items={shown} marks={marks} label={c.label} trending={cat === "trending"} hour12={hour12} />}
         {!front && shown.length > 0 && (
           <div className="nw-results">
             {shown.map((n, i) => <Story key={n.id} n={n} variant="result" marks={marks} eager={i < 2} />)}

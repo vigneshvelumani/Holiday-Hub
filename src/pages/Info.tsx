@@ -43,6 +43,42 @@ function Section({ id, title, note, children }: { id: string; title: string; not
   );
 }
 
+/**
+ * A whole-number field that can be cleared and retyped. The text being typed is kept locally and
+ * only saved once it is a number inside the range; leaving the field snaps it back to the saved value.
+ */
+function NumField({ value, min, max, onCommit, label, title }: { value: number; min: number; max: number; onCommit: (n: number) => void; label: string; title?: string }) {
+  const [text, setText] = useState(String(value));
+  const editing = useRef(false);
+  useEffect(() => {
+    if (!editing.current) setText(String(value));
+  }, [value]);
+  return (
+    <input
+      className="input num st-w-xs"
+      type="number"
+      inputMode="numeric"
+      min={min}
+      max={max}
+      step={1}
+      value={text}
+      aria-label={label}
+      title={title ?? `${min} to ${max}`}
+      onFocus={() => (editing.current = true)}
+      onChange={(e) => {
+        const t = e.target.value;
+        setText(t);
+        const n = Number(t);
+        if (t.trim() !== "" && Number.isInteger(n) && n >= min && n <= max) onCommit(n);
+      }}
+      onBlur={() => {
+        editing.current = false;
+        setText(String(value));
+      }}
+    />
+  );
+}
+
 function Row({ title, desc, children }: { title: string; desc: ReactNode; children: ReactNode }) {
   return (
     <div className="st-row">
@@ -72,7 +108,7 @@ export function SettingsPage() {
       let cur = SECTIONS[0].id;
       for (const x of SECTIONS) {
         const el = document.getElementById(`st-${x.id}`);
-        if (el && el.getBoundingClientRect().top <= 150) cur = x.id;
+        if (el && el.getBoundingClientRect().top <= 190) cur = x.id;
       }
       if (window.scrollY > 0 && window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4) cur = SECTIONS[SECTIONS.length - 1].id;
       setActive(cur);
@@ -101,6 +137,11 @@ export function SettingsPage() {
     const reduce = typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches;
     pinned.current = id;
     setActive(id);
+    // on phones the list is a sideways-scrolling strip: centre the chosen chip in it. Only the strip
+    // is scrolled (a second scrollIntoView would cancel the page's own smooth scroll below).
+    const chip = document.querySelector<HTMLElement>(`.st-nav [data-sec="${id}"]`);
+    const strip = chip?.closest("ul");
+    if (chip && strip && strip.scrollWidth > strip.clientWidth) strip.scrollLeft = chip.offsetLeft - strip.offsetLeft - (strip.clientWidth - chip.offsetWidth) / 2;
     document.getElementById(`st-${id}`)?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
     document.getElementById(`st-h-${id}`)?.focus({ preventScroll: true });
   };
@@ -125,7 +166,7 @@ export function SettingsPage() {
           <ul>
             {SECTIONS.map(({ id, label, icon: Icon }) => (
               <li key={id}>
-                <button type="button" aria-current={active === id ? "true" : undefined} onClick={() => jump(id)}>
+                <button type="button" data-sec={id} aria-current={active === id ? "true" : undefined} onClick={() => jump(id)}>
                   <Icon size={16} aria-hidden /> {label}
                 </button>
               </li>
@@ -159,7 +200,7 @@ export function SettingsPage() {
               <Seg value={s.tempUnit} onChange={(v) => set({ tempUnit: v })} label="Temperature unit" options={[{ value: "C", label: "°C" }, { value: "F", label: "°F" }]} />
             </Row>
             <Row title="Salary day" desc="Day of the month shown as salary day (shorter months use their last day).">
-              <input className="input num st-w-xs" type="number" min={1} max={31} value={s.salaryDay} onChange={(e) => set({ salaryDay: Math.max(1, Math.min(31, Math.floor(+e.target.value) || 1)) })} aria-label="Salary day" />
+              <NumField value={s.salaryDay} min={1} max={31} onCommit={(n) => set({ salaryDay: n })} label="Salary day" title="A day of the month, 1 to 31" />
             </Row>
             <Row title="Your time zone" desc="Taken from this device. Calendar dates and reminders follow it.">
               <span className="st-value">{hereName(s.location)}<small>{tzLabel(LOCAL_TZ)}</small></span>
@@ -180,17 +221,17 @@ export function SettingsPage() {
             </Row>
             <Row title="Salary day alert" desc="On salary day and a few days before.">
               <label className="st-mini"><span>At</span><input className="input st-w-time" type="time" value={s.notify.salaryTime} onChange={(e) => setNotify({ salaryTime: e.target.value || "09:00" })} aria-label="Salary alert time" /></label>
-              <label className="st-mini"><span>Days before</span><input className="input num st-w-xs" type="number" min={0} max={7} value={s.notify.salaryLead} onChange={(e) => setNotify({ salaryLead: Math.max(0, Math.min(7, +e.target.value || 0)) })} aria-label="Days before salary day" title="Days before" /></label>
+              <label className="st-mini"><span>Days before</span><NumField value={s.notify.salaryLead} min={0} max={7} onCommit={(n) => setNotify({ salaryLead: n })} label="Days before salary day" title="Days before: 0 to 7" /></label>
               <Switch checked={s.notify.salary} onChange={(v) => setNotify({ salary: v })} label="Salary alerts" />
             </Row>
             <Row title="Birthday alert" desc="On the day and a number of days before.">
               <label className="st-mini"><span>At</span><input className="input st-w-time" type="time" value={s.notify.birthdayTime} onChange={(e) => setNotify({ birthdayTime: e.target.value || "09:00" })} aria-label="Birthday alert time" /></label>
-              <label className="st-mini"><span>Days before</span><input className="input num st-w-xs" type="number" min={0} max={30} value={s.notify.birthdayLead} onChange={(e) => setNotify({ birthdayLead: Math.max(0, Math.min(30, +e.target.value || 0)) })} aria-label="Days before birthday" title="Days before" /></label>
+              <label className="st-mini"><span>Days before</span><NumField value={s.notify.birthdayLead} min={0} max={30} onCommit={(n) => setNotify({ birthdayLead: n })} label="Days before birthday" title="Days before: 0 to 30" /></label>
               <Switch checked={s.notify.birthday} onChange={(v) => setNotify({ birthday: v })} label="Birthday alerts" />
             </Row>
             <Row title="Event alert" desc="For your events, on the day or a number of days before.">
               <label className="st-mini"><span>At</span><input className="input st-w-time" type="time" value={s.notify.eventTime} onChange={(e) => setNotify({ eventTime: e.target.value || "09:00" })} aria-label="Event alert time" /></label>
-              <label className="st-mini"><span>Days before</span><input className="input num st-w-xs" type="number" min={0} max={14} value={s.notify.eventLead} onChange={(e) => setNotify({ eventLead: Math.max(0, Math.min(14, +e.target.value || 0)) })} aria-label="Days before event" title="Days before" /></label>
+              <label className="st-mini"><span>Days before</span><NumField value={s.notify.eventLead} min={0} max={14} onCommit={(n) => setNotify({ eventLead: n })} label="Days before event" title="Days before: 0 to 14" /></label>
               <Switch checked={s.notify.events} onChange={(v) => setNotify({ events: v })} label="Event alerts" />
             </Row>
           </Section>

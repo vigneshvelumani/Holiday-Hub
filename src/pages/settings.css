@@ -55,24 +55,37 @@
 .st-add .input { max-width: 280px; min-width: 0; flex: 1; }
 .st-note { font-size: 14px; color: var(--ink-2); max-width: 76ch; padding: 14px 0 12px; }
 
+/* narrower than the two-column layout: the section list becomes a row of chips above the sections */
 @media (max-width: 1180px) {
-  .st-layout { grid-template-columns: minmax(0, 1fr); }
-  .st-nav { display: none; }
+  .st-layout { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .st-nav { position: static; min-width: 0; }
+  .st-nav ul { flex-direction: row; flex-wrap: wrap; gap: 6px; }
+  .st-nav li { flex: none; }
+  .st-nav button { width: auto; padding: 0 12px 0 10px; gap: 7px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); white-space: nowrap; }
+  .st-nav button:hover { background: var(--surface); border-color: var(--line-strong); }
+  .st-nav button[aria-current="true"] { border-color: var(--accent); box-shadow: inset 0 -2px 0 var(--accent); }
 }
 @media (max-width: 900px) {
   .st-sec { padding: 16px 14px 6px; }
-  .st-row { grid-template-columns: minmax(0, 1fr); min-height: 0; }
-  .st-row-ctl { justify-content: flex-start; }
-  .st-value { text-align: left; }
   .st-cols { grid-template-columns: minmax(0, 1fr); }
-  .st-cols .st-row { grid-template-columns: minmax(0, 1fr) auto; }
   .st-cols .st-row:nth-last-child(2) { border-bottom: 1px solid var(--line); }
   .st-state { min-width: 0; }
   .st-page .btn, .st-page .input, .st-page .select { min-height: 40px; }
   .st-page .seg button { height: 36px; }
+  .st-nav button { min-height: 40px; }
   .st-cat { min-height: 38px; }
   .st-cat button { width: 36px; height: 36px; }
   .st-page .switch::before { inset: -8px -2px; }
+}
+/* phones: the control drops under its label; the chips scroll sideways instead of stacking four deep */
+@media (max-width: 640px) {
+  .st-row { grid-template-columns: minmax(0, 1fr); min-height: 0; }
+  .st-row-ctl { justify-content: flex-start; }
+  .st-value { text-align: left; }
+  .st-cols .st-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .st-nav ul { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: -4px -12px; padding: 4px 12px; scroll-padding: 0 12px; }
+  .st-nav ul::-webkit-scrollbar { display: none; }
+  .st-add .input { max-width: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .st-nav button { transition: none; }

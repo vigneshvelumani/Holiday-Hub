@@ -177,8 +177,7 @@ a { color: inherit; }
 :root[data-theme="dark"] .sat-tag.working { color: #1a1206; }
 .sat-tag.off { color: var(--c-offsat); box-shadow: inset 0 0 0 1.5px var(--c-offsat); background: var(--surface); }
 .sat-tag.lg { height: 24px; font-size: 11px; padding: 0 9px; }
-.sat-working { box-shadow: inset 3px 0 0 var(--c-worksat); }
-.sat-off { background-image: repeating-linear-gradient(135deg, color-mix(in srgb, var(--c-offsat) 9%, transparent) 0 6px, transparent 6px 12px); }
+/* .sat-working / .sat-off row and cell tints live in premium.css */
 
 /* ── item chips ── */
 .item { display: flex; align-items: center; gap: 5px; min-width: 0; height: 20px; padding: 0 6px 0 5px; border-radius: 3px; font-size: 11.5px; line-height: 20px; background: color-mix(in srgb, var(--tone) 11%, var(--surface)); color: var(--ink); border-left: 3px solid var(--tone); cursor: pointer; border-top: 0; border-right: 0; border-bottom: 0; text-align: left; width: 100%; }

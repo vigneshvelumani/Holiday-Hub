@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRight, ArrowUpRight, Briefcase, CalendarCheck2, ChevronLeft, ChevronRight, Copy, Droplets, Gauge, Hourglass, MapPin, Maximize2, OctagonAlert, Palmtree, Plus, RefreshCw, Share2, Sunrise, Sunset, TriangleAlert, Wind,
 } from "lucide-react";
@@ -68,6 +68,25 @@ function Hello() {
       toast("Couldn't copy", "Clipboard access was blocked.", "warn");
     }
   };
+  // The sky behind the header must always reach below this greeting, however it wraps:
+  // publish the greeting's bottom edge so the stylesheet can size the sky from it.
+  const box = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    const el = box.current;
+    const main = el?.closest<HTMLElement>(".main");
+    const page = el?.offsetParent as HTMLElement | null;
+    if (!el || !main || !page) return;
+    const measure = () => main.style.setProperty("--sky-h", `${page.offsetTop + el.offsetTop + el.offsetHeight}px`);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    window.addEventListener("resize", measure);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", measure);
+      main.style.removeProperty("--sky-h");
+    };
+  }, []);
   const share = async () => {
     if (navigator.share) {
       try {
@@ -78,7 +97,7 @@ function Hello() {
     } else void copy();
   };
   return (
-    <header className="hello">
+    <header className="hello" ref={box}>
       <div>
         <div className="greet">{greeting}</div>
         <h1><span className="sr">Today is </span>{fmt(now, { weekday: "long" })}</h1>
@@ -146,7 +165,7 @@ function WeatherCard() {
                 <div className="l">{weatherLabel(w.current.code)}</div>
               </div>
             </div>
-            <div style={{ fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,.9)" }}>Feels like {Math.round(w.current.feels)}° · High {Math.round(w.daily[0].tmax)}° · Low {Math.round(w.daily[0].tmin)}°</div>
+            <div className="wx-feels">Feels like {Math.round(w.current.feels)}° · High {Math.round(w.daily[0].tmax)}° · Low {Math.round(w.daily[0].tmin)}°</div>
             <div className="wx-facts">
               <div><div className="k"><Droplets size={14} /> Humidity</div><div className="v num">{w.current.humidity}%</div></div>
               <div><div className="k"><Wind size={14} /> Wind</div><div className="v num">{Math.round(w.current.wind)} km/h</div></div>
@@ -406,9 +425,9 @@ function Extras() {
       {s.widgets.stats && (
         <div>
           <div className="eyebrow">Your progress</div>
-          <div className="big num">{done} of {tasks.length} tasks done</div>
+          <div className="big num">{tasks.length ? `${done} of ${tasks.length} task${tasks.length === 1 ? "" : "s"} done` : "No tasks yet"}</div>
           <div className="meter" style={{ margin: "8px 0 6px" }} role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label="Tasks completed"><i style={{ width: `${pct}%` }} /></div>
-          <div className="small muted">{written} note{written === 1 ? "" : "s"} written</div>
+          <div className="small muted">{tasks.length ? "" : "Add one from New in the top bar. "}{written} note{written === 1 ? "" : "s"} written</div>
         </div>
       )}
       {s.widgets.zodiac && (
