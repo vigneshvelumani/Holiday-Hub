@@ -1,4 +1,4 @@
-import { Fragment, Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import {
   Bell, BellOff, Cake, CalendarDays, Check, CheckCheck, CircleCheck, CloudSun, Flag, Globe2, Info, LayoutDashboard, ListTodo, MapPin, Menu, Moon, MoonStar, Newspaper, PanelLeftClose, PanelLeftOpen, Plus, Search, SearchX, Settings as SettingsIcon, Sun, Trash2, TriangleAlert, X,
 } from "lucide-react";
@@ -11,8 +11,8 @@ import { DayModal } from "./components/DayModal.tsx";
 import { LOCAL_TZ, fmtZone, tzName, useNow, useTodayKey } from "./lib/clock.ts";
 import { resolvePlace } from "./lib/location.ts";
 import { LocationChip, LocationDialog } from "./components/Location.tsx";
-import { SkyBox } from "./components/SkyBox.tsx";
-import { useSky } from "./lib/sky.ts";
+import { MiniMonth } from "./components/MiniMonth.tsx";
+import { CalendarsPanel, RailPanels } from "./components/RailPanels.tsx";
 import { BirthdaysModal, EventForm, ReminderForm, TaskForm } from "./components/Forms.tsx";
 import { Modal, UiContext, tone, useUi as useContextUi, type Route, type Ui } from "./components/ui.tsx";
 import { Dashboard, HolidaysPage, RemindersPage, TasksPage, timeAgo } from "./pages/Main.tsx";
@@ -56,7 +56,7 @@ function useTheme(theme: "system" | "light" | "dark") {
     const apply = () => {
       const dark = theme === "dark" || (theme === "system" && mq.matches);
       document.documentElement.dataset.theme = dark ? "dark" : "light";
-      document.querySelector('meta[name="theme-color"]')?.setAttribute("content", "#121831");
+      document.querySelector('meta[name="theme-color"]')?.setAttribute("content", dark ? "#0a0a0c" : "#f3f2f6");
     };
     apply();
     mq.addEventListener("change", apply);
@@ -81,7 +81,8 @@ export default function App() {
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
-  const dark = document.documentElement.dataset.theme === "dark";
+  // derived from the setting itself (not from the attribute an effect writes later), so the switch is right on the same render
+  const dark = s.theme === "dark" || (s.theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
   // first visit: ask where the visitor is instead of silently assuming a city
   useEffect(() => {
     if (data.ready && !s.locationPrompted) setLocOpen("welcome");
@@ -149,36 +150,35 @@ export default function App() {
     <UiContext.Provider value={ui}>
       <a className="skip" href="#main" onClick={(e) => (e.preventDefault(), document.getElementById("main")?.focus())}>Skip to content</a>
       <div className={"shell" + (s.sidebarCollapsed ? " collapsed" : "")}>
-        <nav className="sidebar" aria-label="Main">
+        <div className="sidebar">
           <div className="brand">
-            <span className="row" style={{ gap: 10, minWidth: 0 }}>
+            <span className="row" style={{ gap: 12, minWidth: 0 }}>
               <BrandMark />
               <span className="brand-name">Holiday Hub</span>
             </span>
-            <button className="btn ghost icon sm" onClick={() => updateSettings({ sidebarCollapsed: !s.sidebarCollapsed })} aria-label={s.sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"} aria-expanded={!s.sidebarCollapsed} title={s.sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}>
-              {s.sidebarCollapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
+            <button className="rail-btn" onClick={() => updateSettings({ sidebarCollapsed: !s.sidebarCollapsed })} aria-label={s.sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"} aria-expanded={!s.sidebarCollapsed} title={s.sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}>
+              {s.sidebarCollapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
             </button>
           </div>
-          {NAV.map((n, i) => (
-            <Fragment key={n.id}>
-              {(i === 0 || NAV[i - 1].group !== n.group) && <div className="nav-group">{n.group}</div>}
-              <button className="nav-item" aria-current={route === n.id ? "page" : undefined} onClick={() => go(n.id)} title={s.sidebarCollapsed ? n.label : undefined} aria-label={n.label}>
-                <n.icon size={20} strokeWidth={1.9} /> <span className="nav-label">{n.label}</span>
+          <nav className="nav-list" aria-label="Main">
+            {NAV.map((n) => (
+              <button key={n.id} className="nav-item" aria-current={route === n.id ? "page" : undefined} onClick={() => go(n.id)} title={s.sidebarCollapsed ? n.label : undefined} aria-label={n.label}>
+                <n.icon size={19} strokeWidth={1.9} /> <span className="nav-label">{n.label}</span>
                 {n.id === "tasks" && openTasks > 0 && <span className="count num">{openTasks}</span>}
               </button>
-            </Fragment>
-          ))}
+            ))}
+          </nav>
+          {!s.sidebarCollapsed && <RailPanels />}
           <div className="sidebar-foot">
-            <span className="sidebar-note">No sign-in. Everything you add stays in this browser.</span>
             <div className="theme-switch" role="group" aria-label="Colour theme">
-              <button type="button" aria-pressed={!dark} aria-label="Light theme" onClick={() => updateSettings({ theme: "light" })}><Sun size={15} /> <span>Light</span></button>
-              <button type="button" aria-pressed={dark} aria-label="Dark theme" onClick={() => updateSettings({ theme: "dark" })}><Moon size={15} /> <span>Dark</span></button>
+              <button type="button" aria-pressed={!dark} aria-label="Light theme" title="Light theme" onClick={() => updateSettings({ theme: "light" })}><Sun size={15} /> <span>Light</span></button>
+              <button type="button" aria-pressed={dark} aria-label="Dark theme" title="Dark theme" onClick={() => updateSettings({ theme: "dark" })}><Moon size={15} /> <span>Dark</span></button>
             </div>
+            <span className="sidebar-note">No sign-in. Everything you add stays in this browser.</span>
           </div>
-        </nav>
+        </div>
 
         <div className={"main" + (route === "dashboard" ? " tall" : "")}>
-          <Horizon />
           <header className={"topbar" + (scrolled ? " scrolled" : "")} role="banner">
             <span className="brand only-sm" style={{ padding: 0 }}>
               <BrandMark />
@@ -224,6 +224,10 @@ export default function App() {
             ))}
             <button className="nav-item" onClick={() => (setMore(false), setLocOpen("manual"))}><MapPin size={19} /> Change location</button>
           </nav>
+          <div className="sheet-rail">
+            <MiniMonth onPick={() => setMore(false)} />
+            <CalendarsPanel />
+          </div>
         </Modal>
       )}
 
@@ -248,23 +252,6 @@ function BrandMark() {
         <path d="m9 15 2.2 2.2L15.5 13" />
       </svg>
     </span>
-  );
-}
-
-/** The sky over the active location (from live weather) with a ridge line — the backdrop behind the header. */
-function Horizon() {
-  const s = useSettings();
-  const sky = useSky(s);
-  return (
-    <div aria-hidden>
-      <SkyBox sky={sky} className="horizon">
-        <svg className="ridges" viewBox="0 0 1200 200" preserveAspectRatio="none">
-          <path className="r1" d="M0 120 80 96l70 16 90-42 90 34 90-44 80 38 100-24 90 36 90-44 100 34 80-20 100 28 80-24 60 16v100H0Z" />
-          <path className="r2" d="M0 150l90-22 80 18 90-34 90 28 100-36 90 34 100-20 100 28 90-36 100 30 90-18 90 22 90-20v76H0Z" />
-          <path className="r3" d="M0 176l120-16 100 12 110-22 120 20 110-16 120 18 120-20 110 18 120-14 100 14 70-10v40H0Z" />
-        </svg>
-      </SkyBox>
-    </div>
   );
 }
 

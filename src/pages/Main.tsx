@@ -44,22 +44,38 @@ function holdFocus(from: Element | null) {
 }
 
 /** A completed row on its way out: a still image of the row (ticked, struck through) with nothing to click. */
-function LeavingRow({ id, title, timed }: { id: string; title: string; timed?: string }) {
+function LeavingRow({ id, title, timed }: { id: string; title: string; timed?: ReactNode }) {
   return (
     <li className={"wk-row done leaving" + (timed != null ? " timed" : "")} data-id={id} aria-hidden="true">
-      {timed != null && <span className="wk-time">{timed}</span>}
+      {timed}
       <span className="check wk-tick"><CheckIcon size={13} strokeWidth={3} /></span>
       <span className="wk-main"><span className="wk-title">{title}</span></span>
     </li>
   );
 }
 
-function Stat({ n, label, icon, name, pressed, alert, onClick }: { n: number; label: string; icon: ReactNode; name: string; pressed: boolean; alert?: boolean; onClick: () => void }) {
+type StatTone = "lilac" | "lime" | "pink" | "sage";
+
+/** A flat pastel tile with a huge numeral; pressing it filters the list (the selected one carries a tick and a ring). */
+function Stat({ n, label, icon, name, pressed, alert, tone, onClick }: { n: number; label: string; icon: ReactNode; name: string; pressed: boolean; alert?: boolean; tone: StatTone; onClick: () => void }) {
   return (
-    <button type="button" className={"wk-stat" + (alert ? " alert" : "")} aria-pressed={pressed} aria-label={name} onClick={onClick}>
-      <span className="n tick" key={n}>{n}</span>
+    <button type="button" className={`wk-stat t-${tone}` + (alert ? " alert" : "")} aria-pressed={pressed} aria-label={name} onClick={onClick}>
       <span className="k">{icon} {label}</span>
+      <span className="on" aria-hidden><CheckIcon size={13} strokeWidth={3} /></span>
+      <span className="n tick" key={n}>{n}</span>
     </button>
+  );
+}
+
+/** The time of a reminder as a large numeral, with am / pm (when used) and "Overdue" beneath it. */
+function TimeBlock({ time, hour12, overdue }: { time: string; hour12: boolean; overdue?: boolean }) {
+  const [clock, ...rest] = fmtTime(time, hour12).split(" ");
+  const ap = rest.join(" ");
+  return (
+    <span className="wk-time">
+      <span className="t">{clock}</span>
+      {(ap || overdue) && <span className="u">{ap && <span className="ap">{ap}</span>}{overdue && <small>Overdue</small>}</span>}
+    </span>
   );
 }
 
@@ -176,11 +192,11 @@ export function TasksPage() {
       </div>
 
       <div className="wk-stack">
-        <section className="panel wk-summary" aria-label="Task summary">
-          <Stat n={nOpen} label="Open" icon={<ListChecks size={14} />} name={`Show open tasks, ${nOpen}`} pressed={tab === "open"} onClick={() => setTab("open")} />
-          <Stat n={nToday} label="Due today" icon={<CalendarDays size={14} />} name={`Show tasks due today, ${nToday}`} pressed={tab === "today"} onClick={() => setTab("today")} />
-          <Stat n={nOverdue} label="Overdue" icon={<AlertCircle size={14} />} name={`Show overdue tasks, ${nOverdue}`} pressed={tab === "overdue"} alert={nOverdue > 0} onClick={() => setTab("overdue")} />
-          <Stat n={nDone} label="Completed" icon={<CheckCheck size={14} />} name={`Show finished tasks, ${nDone}`} pressed={tab === "done"} onClick={() => setTab("done")} />
+        <section className="wk-summary" aria-label="Task summary">
+          <Stat n={nOpen} label="Open" icon={<ListChecks size={14} />} name={`Show open tasks, ${nOpen}`} pressed={tab === "open"} tone="lilac" onClick={() => setTab("open")} />
+          <Stat n={nToday} label="Due today" icon={<CalendarDays size={14} />} name={`Show tasks due today, ${nToday}`} pressed={tab === "today"} tone="lime" onClick={() => setTab("today")} />
+          <Stat n={nOverdue} label="Overdue" icon={<AlertCircle size={14} />} name={`Show overdue tasks, ${nOverdue}`} pressed={tab === "overdue"} alert={nOverdue > 0} tone="pink" onClick={() => setTab("overdue")} />
+          <Stat n={nDone} label="Completed" icon={<CheckCheck size={14} />} name={`Show finished tasks, ${nDone}`} pressed={tab === "done"} tone="sage" onClick={() => setTab("done")} />
           <div className="wk-aside">
             <div className="eyebrow">Progress</div>
             <div className="big num">{rows.length === 0 ? "No tasks yet" : `${nDone} of ${rows.length} done`}</div>
@@ -189,8 +205,9 @@ export function TasksPage() {
           </div>
         </section>
 
-        <section className="panel wk-list" aria-labelledby="wk-tasks-h">
+        <section className="wk-list" aria-labelledby="wk-tasks-h">
           <h2 id="wk-tasks-h" className="sr">Task list</h2>
+          <div className="wk-tools">
           <div className="wk-bar">
             <Seg value={tab} onChange={setTab} label="Task status" options={[
               { value: "open", label: `Open (${nOpen})` }, { value: "today", label: `Today (${nToday})` },
@@ -219,6 +236,7 @@ export function TasksPage() {
               <label className="wk-date"><span>To</span><input className="input" type="date" aria-label="To date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} /></label>
               {filtering && <button type="button" className="btn ghost wk-clear" onClick={clear}><X size={15} /> Clear</button>}
             </div>
+          </div>
           </div>
 
           {shown.length === 0 && (
@@ -267,6 +285,10 @@ export function TasksPage() {
               </ul>
             </section>
           ))}
+
+          {groups.length > 0 && tab !== "done" && tab !== "overdue" && (
+            <button type="button" className="wk-add" onClick={add}><span className="box" aria-hidden><Plus size={14} strokeWidth={2.5} /></span> Add task</button>
+          )}
         </section>
       </div>
     </div>
@@ -393,10 +415,10 @@ export function RemindersPage() {
       </div>
 
       <div className="wk-stack">
-        <section className="panel wk-summary three" aria-label="Reminder summary">
-          <Stat n={nUp} label="Upcoming" icon={<Bell size={14} />} name={`Show upcoming reminders, ${nUp}`} pressed={tab === "upcoming"} onClick={() => setTab("upcoming")} />
-          <Stat n={nOver} label="Overdue" icon={<AlertCircle size={14} />} name={`Show overdue reminders, ${nOver}`} pressed={tab === "overdue"} alert={nOver > 0} onClick={() => setTab("overdue")} />
-          <Stat n={nDone} label="Completed" icon={<CheckCheck size={14} />} name={`Show finished reminders, ${nDone}`} pressed={tab === "done"} onClick={() => setTab("done")} />
+        <section className="wk-summary three" aria-label="Reminder summary">
+          <Stat n={nUp} label="Upcoming" icon={<Bell size={14} />} name={`Show upcoming reminders, ${nUp}`} pressed={tab === "upcoming"} tone="lilac" onClick={() => setTab("upcoming")} />
+          <Stat n={nOver} label="Overdue" icon={<AlertCircle size={14} />} name={`Show overdue reminders, ${nOver}`} pressed={tab === "overdue"} alert={nOver > 0} tone="pink" onClick={() => setTab("overdue")} />
+          <Stat n={nDone} label="Completed" icon={<CheckCheck size={14} />} name={`Show finished reminders, ${nDone}`} pressed={tab === "done"} tone="sage" onClick={() => setTab("done")} />
           <div className="wk-aside">
             <div className="eyebrow">Next up</div>
             {next ? (
@@ -414,9 +436,9 @@ export function RemindersPage() {
         </section>
 
         <div className="wk-cols">
-          <section className="panel wk-list" aria-labelledby="wk-rem-h">
+          <section className="wk-list" aria-labelledby="wk-rem-h">
             <h2 id="wk-rem-h" className="sr">Reminder list</h2>
-            <div className="wk-bar">
+            <div className="wk-tools wk-bar">
               <Seg value={tab} onChange={setTab} label="Reminder list" options={[
                 { value: "upcoming", label: `Upcoming (${nUp})` }, { value: "overdue", label: `Overdue (${nOver})` }, { value: "done", label: `Completed (${nDone})` },
               ]} />
@@ -455,7 +477,7 @@ export function RemindersPage() {
                   <ul className="wk-rows">
                     {g.rows.map((x) =>
                       isLeaving(x) ? (
-                        <LeavingRow key={x.r.id} id={x.r.id} title={x.r.message} timed={fmtTime(x.r.time, s.hour12)} />
+                        <LeavingRow key={x.r.id} id={x.r.id} title={x.r.message} timed={<TimeBlock time={x.r.time} hour12={s.hour12} />} />
                       ) : (
                         <ReminderRow key={x.r.id} r={x.r} date={x.date} at={x.at} done={x.done} overdue={x.overdue} hour12={s.hour12} onToggle={() => tick(x)} />
                       ),
@@ -464,10 +486,14 @@ export function RemindersPage() {
                 </section>
               );
             })}
+
+            {days.length > 0 && tab === "upcoming" && (
+              <button type="button" className="wk-add timed" onClick={add}><span className="box" aria-hidden><Plus size={14} strokeWidth={2.5} /></span> Add reminder</button>
+            )}
           </section>
 
-          <section className="panel wk-perm" aria-labelledby="wk-perm-h">
-            <div className="panel-head">
+          <section className={"wk-perm is-" + perm} aria-labelledby="wk-perm-h">
+            <div className="wk-perm-head">
               <h2 id="wk-perm-h">Notifications</h2>
               {perm === "granted" && <span className="wk-state on"><BellRing size={14} aria-hidden /> System alerts on</span>}
               {perm === "default" && <span className="wk-state"><BellOff size={14} aria-hidden /> System alerts off</span>}
@@ -480,7 +506,7 @@ export function RemindersPage() {
               {perm === "denied" && "Browser notifications are blocked for this site. Reminders still appear in the in-app notification centre. To allow system alerts, change the site's notification permission in your browser settings."}
               {perm === "unsupported" && "This browser doesn't support system notifications. Reminders appear in the in-app notification centre."}
             </p>
-            {perm === "default" && <button type="button" className="btn primary sm" onClick={enable}><BellRing size={14} /> Enable system alerts</button>}
+            {perm === "default" && <button type="button" className="btn primary" onClick={enable}><BellRing size={14} /> Enable system alerts</button>}
             <ul className="wk-facts">
               <li><Monitor size={15} aria-hidden /><span>Reminders notify you while this site is open in a browser tab.</span></li>
               <li><Clock size={15} aria-hidden /><span>Anything that comes due while the browser is closed is shown as missed the next time you open it.</span></li>
@@ -498,7 +524,7 @@ function ReminderRow({ r, date, at, done, overdue, hour12, onToggle }: { r: Remi
   const sameDay = ymd(fire) === date;
   return (
     <li className={"wk-row timed" + (done ? " done" : "")} data-id={r.id}>
-      <span className="wk-time">{fmtTime(r.time, hour12)}{overdue && <small>Overdue</small>}</span>
+      <TimeBlock time={r.time} hour12={hour12} overdue={overdue} />
       <Check checked={done} label={done ? `Reopen "${r.message}"` : `Mark "${r.message}" complete`} onChange={onToggle} />
       <button type="button" className="wk-main" onClick={() => ui.editReminder(r)}>
         <span className="wk-title">{r.message}</span>

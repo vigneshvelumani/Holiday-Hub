@@ -5,7 +5,7 @@
 
 import "./news.css";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import { ArrowLeft, ArrowUpRight, Bookmark as BookmarkIcon, BookmarkCheck, Clock, ListFilter, Newspaper, RefreshCw, Search, Share2, X } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, Bookmark as BookmarkIcon, BookmarkCheck, Clock, History, ListFilter, Newspaper, Radio, RefreshCw, Search, Share2, WifiOff, X } from "lucide-react";
 import { useNow } from "../lib/clock.ts";
 import { toast } from "../lib/notify.ts";
 import { NEWS_CATEGORIES, getArticle, newsCategory, newsSearchFeed, rememberArticles, useNews, type NewsItem } from "../lib/services.ts";
@@ -18,6 +18,13 @@ const catLabel = (id: string) => (id === "search" ? "Search result" : id === "sa
 const fromBookmark = (b: Bookmark): NewsItem => ({ id: b.id, title: b.title, link: b.link, source: b.source, pubDate: b.pubDate, summary: b.summary, image: b.image, category: b.category || "saved", related: [] });
 const stamp = (iso: string | null) => (iso ? Date.parse(iso) || 0 : 0);
 const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n).replace(/\s+\S*$/, "") + "…" : s);
+// a story without a picture is set on a flat pastel tile; the colour is fixed by the story's id
+const TONES = ["lilac", "sage", "peach", "sky", "grey"] as const;
+const toneOf = (id: string, colourOnly = false) => {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return TONES[h % (colourOnly ? TONES.length - 1 : TONES.length)]; // the lead tile is never the grey one
+};
 
 /** Clock time for today's stories, the date for older ones. */
 function shortWhen(iso: string | null, hour12: boolean): string {
@@ -58,28 +65,38 @@ function Meta({ n, extra }: { n: NewsItem; extra?: string }) {
   );
 }
 
-/** The publisher's own picture, or — when there is none or it fails — nothing / a typographic tile. Never a stand-in photo. */
-function Pic({ n, eager, tile }: { n: NewsItem; eager?: boolean; tile?: boolean }) {
-  const [bad, setBad] = useState(false);
+/** The publisher's own picture, or nothing: a story without one becomes a pastel text tile. Never a stand-in photo. */
+function Pic({ n, eager, onBad }: { n: NewsItem; eager?: boolean; onBad: () => void }) {
   const [ready, setReady] = useState(false);
-  if (n.image && !bad) {
-    return (
-      <span className="nw-pic">
-        <img
-          src={n.image}
-          alt=""
-          className={ready ? "ok" : undefined}
-          loading={eager ? "eager" : "lazy"}
-          decoding="async"
-          referrerPolicy="no-referrer"
-          ref={(el) => void (el && el.complete && el.naturalWidth > 0 && !ready && setReady(true))}
-          onLoad={() => setReady(true)}
-          onError={() => setBad(true)}
-        />
-      </span>
-    );
-  }
-  return tile ? <span className="nw-pic nw-pic-none" aria-hidden><span>{n.source || "News"}</span></span> : null;
+  if (!n.image) return null;
+  return (
+    <span className="nw-pic">
+      <img
+        src={n.image}
+        alt=""
+        className={ready ? "ok" : undefined}
+        loading={eager ? "eager" : "lazy"}
+        decoding="async"
+        referrerPolicy="no-referrer"
+        ref={(el) => void (el && el.complete && el.naturalWidth > 0 && !ready && setReady(true))}
+        onLoad={() => setReady(true)}
+        onError={onBad}
+      />
+    </span>
+  );
+}
+
+/** "10:42 am" / "17 Nov": the figures large, the rest small. */
+function When({ iso, hour12 }: { iso: string | null; hour12: boolean }) {
+  const parts = shortWhen(iso, hour12).split(/\s+/).filter(Boolean);
+  if (!parts.length) return <span className="nw-when num"><b>—</b></span>;
+  const big = Math.max(0, parts.findIndex((x) => /\d/.test(x)));
+  return (
+    <span className="nw-when num">
+      <b>{parts[big]}</b>
+      {parts.length > 1 && <small>{parts.filter((_, i) => i !== big).join(" ")}</small>}
+    </span>
+  );
 }
 
 function SaveButton({ n, marks }: { n: NewsItem; marks: Marks }) {
@@ -91,25 +108,33 @@ function SaveButton({ n, marks }: { n: NewsItem; marks: Marks }) {
   );
 }
 
-type Variant = "lead" | "side" | "trio" | "duo" | "latest" | "more" | "result";
-function Story({ n, variant, marks, kicker, eager, hour12 = true }: { n: NewsItem; variant: Variant; marks: Marks; kicker?: string; eager?: boolean; hour12?: boolean }) {
+type Variant = "lead" | "side" | "trio" | "duo" | "latest" | "more" | "result" | "rel";
+function Story({ n, variant, marks, kicker, pill, eager, hour12 = true }: { n: NewsItem; variant: Variant; marks?: Marks; kicker?: string; pill?: string; eager?: boolean; hour12?: boolean }) {
   const ui = useUi();
+  const [bad, setBad] = useState(false);
   const lead = variant === "lead";
-  const withSummary = lead || variant === "duo" || variant === "result" || (variant === "side" && !n.image);
+  const list = variant === "latest";
+  const pictured = !list && !!n.image && !bad;
+  const withSummary = lead || variant === "duo" || variant === "result" || (variant === "side" && !pictured);
   const extra = n.related.length ? (lead ? `covered by ${n.related.length + 1} publishers` : `+${n.related.length} publishers`) : undefined;
   return (
-    <article className={`nw-item nw-v-${variant}${n.image ? "" : " nw-noimg"}`}>
+    <article className={`nw-item nw-v-${variant}${list ? "" : pictured ? " nw-pictured" : ` nw-plain nw-tone-${toneOf(n.id, lead)}`}${marks ? "" : " nw-nosave"}`}>
       <button type="button" className={(lead ? "lead" : "story") + " nw-story"} data-story={n.id} title={!lead && n.title.length > 110 ? n.title : undefined} onClick={() => ui.readArticle(n.id)}>
-        {variant === "latest" && <span className="nw-when num">{shortWhen(n.pubDate, hour12) || "—"}</span>}
-        {variant !== "latest" && <Pic n={n} eager={eager} tile={variant === "trio"} />}
+        {list && <When iso={n.pubDate} hour12={hour12} />}
+        {pictured && <Pic n={n} eager={eager} onBad={() => setBad(true)} />}
         <span className="nw-text">
-          {kicker && <span className="eyebrow nw-kicker">{kicker}</span>}
+          {(pill || kicker) && (
+            <span className="nw-kick">
+              {pill && <span className="nw-pill">{pill}</span>}
+              {kicker && <span className="nw-kicker">{kicker}</span>}
+            </span>
+          )}
           {lead ? <h2>{n.title}</h2> : <h3>{n.title}</h3>}
           {withSummary && n.summary && <p>{lead ? clip(n.summary, 280) : n.summary}</p>}
           <Meta n={n} extra={extra} />
         </span>
       </button>
-      <SaveButton n={n} marks={marks} />
+      {marks && <SaveButton n={n} marks={marks} />}
     </article>
   );
 }
@@ -137,10 +162,10 @@ function CategoryTabs({ value, onChange, saved }: { value: string; onChange: (id
     refs.current[ids[j]]?.focus();
   };
   return (
-    <div className="tabs2 nw-tabs" role="tablist" aria-label="News categories" ref={box} onKeyDown={onKey}>
+    <div className="nw-tabs" role="tablist" aria-label="News categories" ref={box} onKeyDown={onKey}>
       {ids.map((id) => (
         <button key={id} type="button" role="tab" id={"nw-tab-" + id} className={id === "saved" ? "nw-tab-saved" : undefined} aria-selected={value === id} aria-controls="nw-panel" tabIndex={value === id ? 0 : -1} ref={(el) => void (refs.current[id] = el)} onClick={() => onChange(id)}>
-          {id === "saved" ? <><BookmarkIcon size={14} aria-hidden /> Saved ({saved})</> : newsCategory(id)!.label}
+          {id === "saved" ? <><BookmarkIcon size={14} aria-hidden /> Saved <span className="nw-tab-n num">({saved})</span></> : newsCategory(id)!.label}
         </button>
       ))}
     </div>
@@ -169,7 +194,7 @@ function FrontPage({ items, marks, label, trending, hour12 }: { items: NewsItem[
   return (
     <>
       <section className={"nw-top" + (side.length ? "" : " nw-solo")} aria-label="Top stories">
-        <Story n={lead} variant="lead" marks={marks} kicker={trending ? "Most covered right now" : "Top story"} eager />
+        <Story n={lead} variant="lead" marks={marks} pill={label} kicker={trending ? "Most covered right now" : "Top story"} eager />
         {side.length > 0 && (
           <div className="nw-rail">
             {side.map((n) => <Story key={n.id} n={n} variant="side" marks={marks} />)}
@@ -212,16 +237,11 @@ function FrontSkeleton() {
   return (
     <div role="status" aria-busy="true" aria-label="Loading stories">
       <div className="nw-top">
-        <div className="nw-sk-lead">
-          <div className="skeleton nw-sk-pic" />
-          <div className="skeleton" style={{ height: 30, width: "92%" }} />
-          <div className="skeleton" style={{ height: 30, width: "64%" }} />
-          <div className="skeleton" style={{ height: 14, width: "40%" }} />
-        </div>
-        <div className="nw-rail">{lines(3)}</div>
+        <div className="skeleton nw-sk-pic" />
+        <div className="nw-rail">{Array.from({ length: 3 }, (_, i) => <div key={i} className="skeleton nw-sk-tile" />)}</div>
       </div>
       <div className="nw-mid">
-        <div className="nw-trio">{Array.from({ length: 3 }, (_, i) => <div key={i} className="nw-sk-row"><div className="skeleton nw-sk-thumb" /><div className="skeleton" style={{ height: 18 }} /><div className="skeleton" style={{ height: 12, width: "50%" }} /></div>)}</div>
+        <div className="nw-trio">{Array.from({ length: 3 }, (_, i) => <div key={i} className="skeleton nw-sk-thumb" />)}</div>
         <div>{lines(3)}</div>
       </div>
     </div>
@@ -232,10 +252,7 @@ function ResultsSkeleton() {
   return (
     <div className="nw-results" role="status" aria-busy="true" aria-label="Loading stories">
       {Array.from({ length: 6 }, (_, i) => (
-        <div key={i} className="nw-sk-row nw-sk-result">
-          <div className="skeleton" style={{ height: 22, width: i % 2 ? "64%" : "82%" }} />
-          <div className="skeleton" style={{ height: 12, width: "26%" }} />
-        </div>
+        <div key={i} className="skeleton nw-sk-tile" />
       ))}
     </div>
   );
@@ -253,22 +270,13 @@ function rank(n: NewsItem, pool: NewsItem[]): NewsItem[] {
 }
 
 function RelatedList({ n, pool, label }: { n: NewsItem; pool: NewsItem[]; label: string }) {
-  const ui = useUi();
   const more = rank(n, pool);
   if (!more.length) return null;
   return (
     <section aria-labelledby="h-more" className="nw-related">
       <h2 id="h-more" className="nw-sec">{label}</h2>
       <div className="nw-rel-grid">
-        {more.map((x) => (
-          <button key={x.id} type="button" className="story nw-story nw-rel" title={x.title.length > 110 ? x.title : undefined} onClick={() => ui.readArticle(x.id)}>
-            <Pic n={x} />
-            <span className="nw-text">
-              <h3>{x.title}</h3>
-              <Meta n={x} />
-            </span>
-          </button>
-        ))}
+        {more.map((x) => <Story key={x.id} n={x} variant="rel" />)}
       </div>
     </section>
   );
@@ -289,6 +297,7 @@ function Reader({ id, pool, fromList }: { id: string; pool: NewsItem[]; fromList
   const [imgBad, setImgBad] = useState(false);
   const [imgReady, setImgReady] = useState(false);
   const [stuck, setStuck] = useState(false);
+  const [barTop, setBarTop] = useState<number | null>(null); // the bar sticks just under the app's top bar, whatever its height
 
   useEffect(() => {
     window.scrollTo({ top: 0 });
@@ -296,6 +305,8 @@ function Reader({ id, pool, fromList }: { id: string; pool: NewsItem[]; fromList
       const max = document.documentElement.scrollHeight - innerHeight;
       setProgress(max > 40 ? Math.min(1, scrollY / max) : 1);
       setStuck(scrollY > 12);
+      const top = document.querySelector<HTMLElement>(".topbar");
+      setBarTop(top && getComputedStyle(top).position === "sticky" ? Math.round(top.getBoundingClientRect().height) : null);
     };
     on();
     window.addEventListener("scroll", on, { passive: true });
@@ -348,7 +359,7 @@ function Reader({ id, pool, fromList }: { id: string; pool: NewsItem[]; fromList
     <div className="page nw-page nw-reader">
       <div className="progress" role="progressbar" aria-label="Reading progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress * 100)}><i style={{ transform: `scaleX(${progress})` }} /></div>
       <article className="reader-page">
-        <div className={"reader-bar nw-bar" + (stuck ? " stuck" : "")}>
+        <div className={"reader-bar nw-bar" + (stuck ? " stuck" : "")} style={barTop != null ? { top: barTop } : undefined}>
           <button type="button" className="btn" onClick={back}><ArrowLeft size={16} /> <span>Back<span className="nw-wide"> to news</span></span></button>
           <span className="grow" />
           <button type="button" className="btn" onClick={() => toggle(n)} aria-pressed={savedNow} aria-label={savedNow ? "Saved — remove from saved articles" : "Save this article"}>{savedNow ? <BookmarkCheck size={16} /> : <BookmarkIcon size={16} />} <span className="nw-wide">{savedNow ? "Saved" : "Save"}</span></button>
@@ -357,7 +368,7 @@ function Reader({ id, pool, fromList }: { id: string; pool: NewsItem[]; fromList
         </div>
 
         <header className="nw-head">
-          <div className="eyebrow nw-kicker">{catLabel(n.category)}{n.source ? <> <span aria-hidden>·</span> {n.source}</> : null}</div>
+          <div className="nw-kick"><span className="nw-pill">{catLabel(n.category)}</span>{n.source ? <span className="nw-kicker">{n.source}</span> : null}</div>
           <h1 className={n.title.length > 150 ? "nw-xlong" : n.title.length > 95 ? "nw-long" : undefined}>{n.title}</h1>
           <div className="nw-byline">
             {n.author && <span>By <strong>{n.author}</strong></span>}
@@ -479,7 +490,7 @@ export function NewsPage() {
             <p className="page-sub" role="status">
               {showSaved
                 ? `${savedItems.length} saved article${savedItems.length === 1 ? "" : "s"}, kept in this browser`
-                : <><span className={"nw-live" + (error ? " off" : "")}><i aria-hidden /> {error ? (data ? "Saved copy" : "Offline") : "Live"}</span> {loading && !updatedAt ? "Fetching the latest headlines…" : updatedAt ? `Updated ${timeAgo(updatedAt)}` : error ? "The feeds couldn't be reached" : "From publisher feeds"} <span className="nw-auto">· {error ? "tries again by itself" : "refreshes by itself"} every 10 minutes</span></>}
+                : <><span className={"nw-live" + (error ? (data ? " copy" : " off") : "")}>{error ? (data ? <History size={14} aria-hidden /> : <WifiOff size={14} aria-hidden />) : <Radio size={14} aria-hidden />} {error ? (data ? "Saved copy" : "Offline") : "Live"}</span> {loading && !updatedAt ? "Fetching the latest headlines…" : updatedAt ? `Updated ${timeAgo(updatedAt)}` : error ? "The feeds couldn't be reached" : "From publisher feeds"} <span className="nw-auto">· {error ? "tries again by itself" : "refreshes by itself"} every 10 minutes</span></>}
             </p>
             {!showSaved && <button type="button" className="btn sm nw-refresh" onClick={refresh} disabled={loading} title="Only needed if the headlines look out of date"><RefreshCw size={14} className={loading ? "spin" : ""} /> {loading ? "Updating…" : "Refresh now"}</button>}
           </div>
@@ -517,7 +528,7 @@ export function NewsPage() {
 
       <div className="nw-sheet" key={cat + "|" + query} {...(query ? { role: "region", "aria-label": "Search results" } : { role: "tabpanel", id: "nw-panel", "aria-labelledby": "nw-tab-" + cat })}>
         <div className="nw-edition">
-          <div className="eyebrow">{today}</div>
+          <div className="nw-edition-date">{today}</div>
           <div className="nw-edition-title">{label}{!firstLoad && source.length > 0 && <span className="nw-count">{f ? `${shown.length} of ${source.length}` : source.length} stor{source.length === 1 ? "y" : "ies"}</span>}</div>
           {showFilter && (
             <div className="search nw-filter">

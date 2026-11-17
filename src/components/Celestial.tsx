@@ -43,7 +43,7 @@ export function ZodiacWheel({ planets }: { planets: PlanetPosition[] }) {
       {RASHI.map((r, i) => {
         const [tx, ty] = xy(i * 30 + 15, 180);
         return (
-          <g key={r}>
+          <g key={r} className={occupied.has(i) ? "on" : undefined}>
             <path className={"as-wheel-sector" + (occupied.has(i) ? " on" : "")} d={sector(i)} />
             <text className="as-wheel-sign" x={f(tx)} y={f(ty - 1)} textAnchor="middle">{r.split(" ")[0]}</text>
             <text className="as-wheel-sign-en" x={f(tx)} y={f(ty + 12)} textAnchor="middle">{r.split(" ")[1]?.replace(/[()]/g, "")}</text>

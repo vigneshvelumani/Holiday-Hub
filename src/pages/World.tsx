@@ -103,7 +103,7 @@ function HeroNow({ hour12 }: { hour12: boolean }) {
           <span aria-hidden>{t.hm}<small>:{t.sec}</small>{t.ap && <em>{t.ap}</em>}</span>
         </div>
         <div className="wc-hero-date">{new Intl.DateTimeFormat(undefined, { weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(now)}</div>
-        <div className="wc-hero-status">{night ? <Moon size={16} aria-hidden /> : <Sun size={16} aria-hidden />} {status}</div>
+        <div className="wc-hero-status">{night ? <Moon size={16} aria-hidden /> : <Sun size={16} aria-hidden />} <span>{status}</span></div>
       </div>
       <div className="wc-day">
         <div className="wc-day-k">Your day, midnight to midnight</div>
@@ -139,22 +139,22 @@ function ClockCard({ c, now, hour12, onRemove }: { c: WorldClock; now: Date; hou
   const diff = diffLabel(c.tz, LOCAL_TZ, now);
   const dstSize = dst ? (Math.abs(dst.deltaMin) % 60 === 0 ? `${Math.abs(dst.deltaMin) / 60} h` : `${Math.abs(dst.deltaMin)} min`) : "";
   return (
-    <article className={"wc-card" + (night ? " night" : "")} aria-label={`${c.label}, ${fmtZone(now, c.tz, hour12)}, ${night ? "night" : "day"}`}>
+    <article className={"wc-card" + (night ? " night" : " day")} aria-label={`${c.label}, ${fmtZone(now, c.tz, hour12)}, ${night ? "night" : "day"}`}>
       <header className="wc-card-head">
         <h3 title={c.label}>{c.label}</h3>
         <span className="wc-chip">{night ? <Moon size={13} aria-hidden /> : <Sun size={13} aria-hidden />}{night ? "Night" : "Day"}</span>
         <button className="wc-rm" aria-label={`Remove ${c.label}`} title={`Remove ${c.label}`} onClick={onRemove}><X size={16} /></button>
       </header>
       <div className="wc-card-body">
-        <AnalogClock tz={c.tz} now={now} size={104} night={night} daylight={sun ? [dayFrac(c.tz, sun.rise), dayFrac(c.tz, sun.set)] : null} label={c.label} />
         <div className="wc-card-now">
           <div className="wc-time">{t.hm}{t.ap && <em>{t.ap}</em>}</div>
           <div className="wc-date">
             {fmtZoneDate(now, c.tz)}
             {shift !== 0 && <span className="wc-tag">{shift > 0 ? "Tomorrow" : "Yesterday"}</span>}
           </div>
-          <div className="wc-diff">{diff === "Same time" ? "Same time as you" : `${diff} you`}</div>
+          <div className="wc-diff">{diff === "Same time" ? "Same time as you" : `${diff} you`} · {gmtLabel(tzOffset(c.tz, now))}</div>
         </div>
+        <AnalogClock tz={c.tz} now={now} size={92} night={night} daylight={sun ? [dayFrac(c.tz, sun.rise), dayFrac(c.tz, sun.set)] : null} label={c.label} />
       </div>
       <dl className="wc-card-facts">
         {sun ? (
@@ -312,7 +312,7 @@ export function WorldClockPage() {
               <h1>World clock</h1>
               <p>Your time · {here} · {tzName(LOCAL_TZ, now)} · {gmtLabel(tzOffset(LOCAL_TZ, now))}</p>
             </div>
-            <button className="btn glass" onClick={focusSearch}><Plus size={15} /> Add a city</button>
+            <button className="btn glass wc-pill" onClick={focusSearch}><Plus size={15} /> Add a city</button>
           </div>
           <HeroNow hour12={s.hour12} />
         </section>
@@ -322,7 +322,7 @@ export function WorldClockPage() {
         <div className="wc-sec-head">
           <div>
             <h2 id="h-clocks">Your clocks</h2>
-            <p className="wc-sub">{clocks.length} saved · the gold arc around a face marks that city's daylight on a 24-hour ring, midnight at the bottom</p>
+            <p className="wc-sub">{clocks.length} saved · the arc around a face marks that city's daylight on a 24-hour ring, midnight at the bottom</p>
           </div>
         </div>
 

@@ -1,6 +1,6 @@
 import "./holidays.css";
 import { useMemo, useState } from "react";
-import { ArrowRight, Cake, Check, ChevronLeft, ChevronRight, Info, Palmtree, Search, X } from "lucide-react";
+import { ArrowRight, Cake, Check, ChevronLeft, ChevronRight, Circle, CircleDashed, Info, Landmark, Palmtree, Search, Star, X, type LucideIcon } from "lucide-react";
 import { addDays, dayDiff, fmt, fmtLong, parseYmd, today, ymd } from "../lib/dates.ts";
 import { useNow } from "../lib/clock.ts";
 import { KIND_LABEL, holidaysForYear, primaryCategory, regionsOf, type Holiday, type HolidayCategory, type HolidayKind } from "../lib/holidays.ts";
@@ -65,6 +65,13 @@ const LONG_WEEKEND_TITLE = "Long weekend: days off in a row, counting Sundays, n
 
 const kindShort = (k: HolidayKind) => (k === "public" ? "Day off" : KIND_LABEL[k].split(" (")[0]);
 const relText = (n: number) => (n === 0 ? "Today" : n === 1 ? "Tomorrow" : `in ${n} days`);
+
+/** each type has its own shape as well as its own word and pastel, so it never depends on colour alone */
+const KIND_ICON: Record<HolidayKind, LucideIcon> = { public: Circle, festival: Star, observance: CircleDashed, bank: Landmark };
+function KindTag({ kind }: { kind: HolidayKind }) {
+  const Icon = KIND_ICON[kind];
+  return <span className={`hol-tag k-${kind}`} title={KIND_LABEL[kind]}><Icon size={12} aria-hidden /> {kindShort(kind)}</span>;
+}
 
 function Swatches({ h }: { h: Holiday }) {
   return <span className="hol-sws" aria-hidden>{h.categories.map((c) => <i key={c} className="hol-sw" style={tone(c)} />)}</span>;
@@ -165,7 +172,7 @@ export function HolidaysPage() {
       </div>
 
       <div className="hol-top">
-        <section className={"panel hol-next" + (next ? "" : " none")} aria-labelledby="hol-next-h" style={next ? tone(primaryCategory(next)) : undefined}>
+        <section className={"hol-next" + (next ? "" : " none")} aria-labelledby="hol-next-h" style={next ? tone(primaryCategory(next)) : undefined}>
           {next && nextDate ? (
             <>
               <button className="hol-next-date" onClick={() => ui.openDay(nextDate)} aria-label={`${fmtLong(nextDate)} — see that day`}>
@@ -184,12 +191,12 @@ export function HolidaysPage() {
                 <p className="hol-next-reg"><Swatches h={next} /> <span>{regionsOf(next)}</span></p>
                 <p className="hol-next-desc">{next.description}</p>
                 <div className="hol-tags">
-                  <span className={"hol-tag" + (next.kind === "public" ? " off" : "")} title={KIND_LABEL[next.kind]}>{kindShort(next.kind)}</span>
+                  <KindTag kind={next.kind} />
                   {nextRun && <span className="hol-tag lw" title={LONG_WEEKEND_TITLE}><Palmtree size={14} /> Long weekend · {nextRun.days} days off, {nextRun.label}</span>}
-                  <span className="hol-tag">{next.note ? "Calculated date" : "Fixed or rule-based date"}</span>
+                  <span className="hol-tag line">{next.note ? "Calculated date" : "Fixed or rule-based date"}</span>
                 </div>
                 {next.note && <p className="hol-next-note">{next.note}</p>}
-                <button className="btn sm" onClick={() => ui.openDay(nextDate)}>See that day <ArrowRight size={14} /></button>
+                <button className="btn primary" onClick={() => ui.openDay(nextDate)}>See that day <ArrowRight size={15} /></button>
               </div>
               <div className="hol-count" role="img" aria-label={`${nextIn === 1 ? "Tomorrow" : `In ${nextIn} days`}. Starts in ${cd.d} days ${cd.h} hours ${cd.m} minutes.`}>
                 {nextIn === 1 ? (
@@ -206,10 +213,10 @@ export function HolidaysPage() {
           ) : (
             <>
               {todays.length > 0 && (
-                <button className="hol-today" style={{ marginBottom: 10 }} onClick={() => ui.openDay(now)}>Today: {todays.map((h) => h.name).join(", ")}</button>
+                <button className="hol-today" onClick={() => ui.openDay(now)}>Today: {todays.map((h) => h.name).join(", ")}</button>
               )}
               <span className="eyebrow">{nextEyebrow}</span>
-              <h2 id="hol-next-h" style={{ fontSize: 26, fontWeight: 800, marginTop: 6 }}>{region === "banks" ? "No upcoming bank closure found" : "No upcoming holiday found"}</h2>
+              <h2 id="hol-next-h">{region === "banks" ? "No upcoming bank closure found" : "No upcoming holiday found"}</h2>
               <p className="note-state">Nothing is listed for {regionLabel === "All" ? "any region" : regionLabel} between now and the end of {thisYear + 1}.</p>
             </>
           )}
@@ -223,16 +230,16 @@ export function HolidaysPage() {
           {later.length === 0 ? (
             <p className="note-state">{next ? "Nothing further is listed through the end of next year." : "No upcoming holidays to show."}</p>
           ) : (
-            <ul className="hol-list">
+            <ul className="hol-after">
               {later.map((h) => {
                 const d = parseYmd(h.date);
                 return (
                   <li key={h.id} style={tone(primaryCategory(h))}>
                     <button onClick={() => ui.openDay(d)}>
-                      <span className="d num"><span className="wd">{fmt(d, { weekday: "short" })}</span>{fmt(d, { day: "numeric", month: "short" })}</span>
+                      <span className="d num"><b>{d.getDate()}</b><span>{fmt(d, { month: "short" })}</span></span>
                       <span className="b">
                         <span className="t">{h.name}</span>
-                        <span className="r"><span className="sw" aria-hidden /> <span>{regionsOf(h)}</span></span>
+                        <span className="r">{fmt(d, { weekday: "short" })} · {regionsOf(h)}</span>
                       </span>
                       <span className="when num">{relText(dayDiff(now, d))}</span>
                     </button>
@@ -273,19 +280,20 @@ export function HolidaysPage() {
             </div>
           )}
         </div>
-        <nav className="hol-jump" aria-label="Jump to month">
-          {MONTHS_SHORT.map((m, i) => {
-            const n = byMonth[i].length;
-            const cur = year === thisYear && i === now.getMonth();
-            return (
-              <button key={m} className={cur ? "now" : ""} aria-current={cur ? "date" : undefined} disabled={n === 0} onClick={() => jumpTo(i)} aria-label={`${MONTHS[i]}${cur ? " (this month)" : ""}: ${n} listed`} title={`${n} in ${MONTHS[i]}`}>
-                <span className="m">{m}</span>
-                <span className="c num">{n}</span>
-              </button>
-            );
-          })}
-        </nav>
       </section>
+
+      <nav className="hol-jump" aria-label="Jump to month">
+        {MONTHS_SHORT.map((m, i) => {
+          const n = byMonth[i].length;
+          const cur = year === thisYear && i === now.getMonth();
+          return (
+            <button key={m} className={cur ? "now" : ""} aria-current={cur ? "date" : undefined} disabled={n === 0} onClick={() => jumpTo(i)} aria-label={`${MONTHS[i]}${cur ? " (this month)" : ""}: ${n} listed`} title={`${n} in ${MONTHS[i]}`}>
+              <span className="m">{m}</span>
+              <span className="c num">{n}</span>
+            </button>
+          );
+        })}
+      </nav>
 
       <div className="hol-layout">
         <section className="panel hol-tl" aria-labelledby="hol-tl-h" key={year + region}>
@@ -314,7 +322,7 @@ export function HolidaysPage() {
             const current = year === thisYear && m === now.getMonth();
             const gone = year < thisYear || (year === thisYear && m < now.getMonth());
             const firstAhead = current ? rows.findIndex((h) => h.date >= todayKey) : -1;
-            const nowMark = <li className="hol-now" key="now">Today · {fmt(now, { weekday: "short", day: "numeric", month: "short" })}</li>;
+            const nowMark = <li className="hol-now" key="now"><span>Today · {fmt(now, { weekday: "short", day: "numeric", month: "short" })}</span></li>;
             return (
               <section className={"hol-grp" + (current ? " current" : "") + (gone ? " gone" : "")} id={"hol-m" + m} key={m} aria-labelledby={"hol-mh" + m}>
                 <div className="hol-grp-head">
@@ -332,8 +340,8 @@ export function HolidaysPage() {
                       <li key={h.id}>
                         <button className={`hol-row${n < 0 ? " past" : ""}${n === 0 ? " is-today" : ""}${minor ? " minor" : ""}`} style={tone(primaryCategory(h))} onClick={() => ui.openDay(d)}>
                           <span className="hol-row-date">
-                            <span className="wd">{fmt(d, { weekday: "short" })}</span>
                             <b className="num">{d.getDate()}</b>
+                            <span className="wd">{fmt(d, { weekday: "short" })}</span>
                           </span>
                           <span className="hol-row-main">
                             <span className="t">{h.name}{n < 0 && <span className="sr"> (past)</span>}</span>
@@ -341,7 +349,7 @@ export function HolidaysPage() {
                             <span className="r"><Swatches h={h} /> <span>{regionsOf(h)}</span></span>
                           </span>
                           <span className="hol-row-meta">
-                            <span className={"hol-tag" + (h.kind === "public" ? " off" : "")}>{kindShort(h.kind)}</span>
+                            <KindTag kind={h.kind} />
                             {run && <span className="hol-tag lw" title={LONG_WEEKEND_TITLE}><Palmtree size={14} /> <span className="sr">Long weekend: </span>{run.days} days off · {run.label}</span>}
                             {h.note && <span className="hol-tag calc" title={h.note}><Info size={14} /> Calculated date<span className="sr"> — the official day can differ by one</span></span>}
                             {n >= 0 && n <= 120 && <span className="rel num">{relText(n)}</span>}

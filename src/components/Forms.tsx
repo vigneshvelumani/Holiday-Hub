@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useId, useState, type FormEvent, type KeyboardEvent } from "react";
 import { Cake, Plus, Trash2 } from "lucide-react";
 import { MONTHS, daysInMonth, fmtShort, isValidYmd, parseYmd, relDays, uid } from "../lib/dates.ts";
 import { nextBirthday } from "../lib/items.ts";
@@ -6,16 +6,49 @@ import { describeRecurrence, type Freq, type Recurrence, type Unit } from "../li
 import { toast } from "../lib/notify.ts";
 import { allCategories, removeItem, saveItem, useData, useSettings, type CalEvent, type Priority, type Reminder, type Task, type TaskStatus } from "../lib/store.ts";
 import { Empty, Field, Modal, Switch } from "./ui.tsx";
+import "../calendar.css";
 
 const DOW = ["S", "M", "T", "W", "T", "F", "S"];
 const DOW_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+/** A small set of choices as pills: one tab stop, arrow keys move and select (radio group). */
+function Choice<T extends string>({ label, value, options, onChange }: { label: string; value: T; options: { value: T; label: string }[]; onChange: (v: T) => void }) {
+  const id = useId();
+  const at = Math.max(0, options.findIndex((o) => o.value === value));
+  const keys = (e: KeyboardEvent<HTMLDivElement>) => {
+    const step = e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : e.key === "ArrowLeft" || e.key === "ArrowUp" ? -1 : 0;
+    if (!step) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const next = (at + step + options.length) % options.length;
+    onChange(options[next].value);
+    e.currentTarget.querySelectorAll<HTMLElement>('[role="radio"]')[next]?.focus();
+  };
+  return (
+    <div className="field fm-choice">
+      <span className="label" id={id}>{label}</span>
+      <div className="fm-pills" role="radiogroup" aria-labelledby={id} onKeyDown={keys}>
+        {options.map((o, n) => (
+          <button key={o.value} type="button" role="radio" aria-checked={o.value === value} tabIndex={n === at ? 0 : -1} className="hb-chip" onClick={() => onChange(o.value)}>
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const PRIORITIES: { value: Priority; label: string }[] = [{ value: "high", label: "High" }, { value: "medium", label: "Medium" }, { value: "low", label: "Low" }];
+const STATUSES: { value: TaskStatus; label: string }[] = [{ value: "todo", label: "To do" }, { value: "in_progress", label: "In progress" }, { value: "done", label: "Completed" }];
+/** The saved category stays selectable even if it is no longer in the list. */
+const categoryOptions = (all: string[], current: string) => (all.includes(current) || !current ? all : [...all, current]).map((c) => ({ value: c, label: c }));
 
 export function RecurrenceEditor({ value, onChange, start }: { value: Recurrence; onChange: (r: Recurrence) => void; start: string }) {
   const startDow = isValidYmd(start) ? parseYmd(start).getDay() : 0;
   const weekly = value.freq === "weekly" || (value.freq === "custom" && (value.unit || "day") === "week");
   const days = value.weekdays?.length ? value.weekdays : [startDow];
   return (
-    <div className="stack tight">
+    <div className="stack tight fm-repeat">
       <div className="grid2 keep">
         <Field label="Repeat">
           <select className="select" value={value.freq} onChange={(e) => onChange({ ...value, freq: e.target.value as Freq, interval: value.interval || 2, unit: value.unit || "day" })}>
@@ -51,15 +84,14 @@ export function RecurrenceEditor({ value, onChange, start }: { value: Recurrence
       {weekly && (
         <div className="field">
           <span className="label">On</span>
-          <div className="row wrap" role="group" aria-label="Weekdays" style={{ gap: 6 }}>
+          <div className="fm-pills" role="group" aria-label="Weekdays">
             {DOW.map((d, i) => (
               <button
                 key={i}
                 type="button"
-                className="btn sm icon"
+                className="hb-chip fm-dow"
                 aria-pressed={days.includes(i)}
                 aria-label={DOW_NAMES[i]}
-                style={days.includes(i) ? { background: "var(--accent)", color: "var(--accent-ink)", borderColor: "var(--accent)" } : undefined}
                 onClick={() => {
                   const next = days.includes(i) ? days.filter((x) => x !== i) : [...days, i].sort();
                   onChange({ ...value, weekdays: next.length ? next : [startDow] });
@@ -102,16 +134,16 @@ function Foot({ onDelete, deleteHint, onClose, saveLabel }: { onDelete?: () => v
     <>
       {onDelete && (
         <span className="row" style={{ marginRight: "auto", minWidth: 0 }}>
-          <button type="button" className="btn danger" style={armed ? { background: "var(--danger)", borderColor: "var(--danger)", color: "var(--surface)" } : undefined} onClick={() => (armed ? onDelete() : setArmed(true))} onBlur={() => setArmed(false)}>
+          <button type="button" className="btn danger hb-btn" style={armed ? { background: "var(--danger)", borderColor: "var(--danger)", color: "var(--surface)" } : undefined} onClick={() => (armed ? onDelete() : setArmed(true))} onBlur={() => setArmed(false)}>
             <Trash2 size={14} /> {armed ? "Confirm delete" : "Delete"}
           </button>
           <span className="small muted hide-sm" role="status">{armed ? deleteHint || "This can't be undone." : ""}</span>
         </span>
       )}
-      <button type="button" className="btn" onClick={onClose}>
+      <button type="button" className="btn hb-btn" onClick={onClose}>
         Cancel
       </button>
-      <button type="submit" form="item-form" className="btn primary">
+      <button type="submit" form="item-form" className="btn primary hb-btn">
         {saveLabel}
       </button>
     </>
@@ -140,7 +172,7 @@ export function TaskForm({ initial, isNew, onClose }: { initial: Task; isNew: bo
   };
   return (
     <Modal title={isNew ? "New task" : "Edit task"} onClose={onClose} footer={<Foot onDelete={isNew ? undefined : del} deleteHint={t.recurrence.freq === "none" ? undefined : "Deletes every occurrence of this repeating task."} onClose={onClose} saveLabel={isNew ? "Add task" : "Save changes"} />}>
-      <form id="item-form" className="stack" onSubmit={submit} noValidate>
+      <form id="item-form" className="stack fm" onSubmit={submit} noValidate>
         <Field label="Title" error={v.msg("title")}>
           <input className="input" data-autofocus {...v.bind("title")} value={t.title} onChange={(e) => set({ title: e.target.value })} placeholder="What needs doing?" maxLength={200} />
         </Field>
@@ -169,29 +201,11 @@ export function TaskForm({ initial, isNew, onClose }: { initial: Task; isNew: bo
             </Field>
           </div>
         )}
-        <div className="grid3">
-          <Field label="Priority">
-            <select className="select" value={t.priority} onChange={(e) => set({ priority: e.target.value as Priority })}>
-              <option value="high">High</option>
-              <option value="medium">Medium</option>
-              <option value="low">Low</option>
-            </select>
-          </Field>
-          <Field label="Category">
-            <select className="select" value={t.category} onChange={(e) => set({ category: e.target.value })}>
-              {allCategories(s).map((c) => (
-                <option key={c}>{c}</option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Status">
-            <select className="select" value={t.status} onChange={(e) => set({ status: e.target.value as TaskStatus })}>
-              <option value="todo">To do</option>
-              <option value="in_progress">In progress</option>
-              <option value="done">Completed</option>
-            </select>
-          </Field>
+        <div className="grid2 fm-choices">
+          <Choice label="Priority" value={t.priority} options={PRIORITIES} onChange={(priority) => set({ priority })} />
+          <Choice label="Status" value={t.status} options={STATUSES} onChange={(status) => set({ status })} />
         </div>
+        <Choice label="Category" value={t.category} options={categoryOptions(allCategories(s), t.category)} onChange={(category) => set({ category })} />
         <RecurrenceEditor value={t.recurrence} onChange={(r) => set({ recurrence: r })} start={t.dueDate} />
         <Field label="Notes">
           <textarea className="textarea" value={t.notes || ""} onChange={(e) => set({ notes: e.target.value })} rows={2} placeholder="Anything else worth remembering" />
@@ -226,7 +240,7 @@ export function ReminderForm({ initial, isNew, onClose }: { initial: Reminder; i
   };
   return (
     <Modal title={isNew ? "New reminder" : "Edit reminder"} onClose={onClose} footer={<Foot onDelete={isNew ? undefined : del} onClose={onClose} saveLabel={isNew ? "Set reminder" : "Save changes"} />}>
-      <form id="item-form" className="stack" onSubmit={submit} noValidate>
+      <form id="item-form" className="stack fm" onSubmit={submit} noValidate>
         <Field label="Message" error={v.msg("message")}>
           <input className="input" data-autofocus {...v.bind("message")} value={r.message} onChange={(e) => set({ message: e.target.value })} placeholder="Remind me to…" maxLength={200} />
         </Field>
@@ -287,22 +301,14 @@ export function EventForm({ initial, isNew, onClose }: { initial: CalEvent; isNe
   };
   return (
     <Modal title={isNew ? "New event" : "Edit event"} onClose={onClose} footer={<Foot onDelete={isNew ? undefined : del} onClose={onClose} saveLabel={isNew ? "Add event" : "Save changes"} />}>
-      <form id="item-form" className="stack" onSubmit={submit} noValidate>
+      <form id="item-form" className="stack fm" onSubmit={submit} noValidate>
         <Field label="Title" error={v.msg("title")}>
           <input className="input" data-autofocus {...v.bind("title")} value={ev.title} onChange={(e) => set({ title: e.target.value })} placeholder="Team standup, gym, anniversary…" maxLength={200} />
         </Field>
-        <div className="grid2 keep">
-          <Field label="Date" error={v.msg("date")}>
-            <input className="input" type="date" required {...v.bind("date")} value={ev.date} onChange={(e) => set({ date: e.target.value })} />
-          </Field>
-          <Field label="Category">
-            <select className="select" value={ev.category} onChange={(e) => set({ category: e.target.value })}>
-              {allCategories(s).map((c) => (
-                <option key={c}>{c}</option>
-              ))}
-            </select>
-          </Field>
-        </div>
+        <Field label="Date" error={v.msg("date")}>
+          <input className="input" type="date" required {...v.bind("date")} value={ev.date} onChange={(e) => set({ date: e.target.value })} />
+        </Field>
+        <Choice label="Category" value={ev.category} options={categoryOptions(allCategories(s), ev.category)} onChange={(category) => set({ category })} />
         <div className="switch-row">
           <span className="label">All-day event</span>
           <Switch checked={ev.allDay} onChange={(v) => set({ allDay: v, startTime: v ? undefined : ev.startTime || "09:00", endTime: v ? undefined : ev.endTime || "10:00" })} label="All-day event" />
@@ -345,7 +351,7 @@ export function BirthdaysModal({ onClose }: { onClose: () => void }) {
   const sorted = [...birthdays].sort((a, b) => nextBirthday(a).getTime() - nextBirthday(b).getTime());
   return (
     <Modal title="Birthdays" onClose={onClose}>
-      <form className="stack" onSubmit={add}>
+      <form className="stack fm" onSubmit={add}>
         <Field label="Person">
           <input className="input" data-autofocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" maxLength={80} />
         </Field>
@@ -364,19 +370,19 @@ export function BirthdaysModal({ onClose }: { onClose: () => void }) {
             <input className="input" type="number" value={year} onChange={(e) => setYear(e.target.value)} placeholder="1990" />
           </Field>
         </div>
-        <button className="btn primary" type="submit" disabled={!name.trim()}>
+        <button className="btn primary hb-btn" type="submit" disabled={!name.trim()}>
           <Plus size={16} /> Add birthday
         </button>
       </form>
       <div className="form-group">
-        <h3 className="eyebrow" style={{ margin: 0 }}>Saved birthdays{sorted.length ? ` · ${sorted.length}` : ""}</h3>
-      <div className="card list">
+        <h3 className="hb-eyebrow" style={{ margin: 0 }}>Saved birthdays{sorted.length ? ` · ${sorted.length}` : ""}</h3>
+      <div className="fm-list">
         {sorted.length === 0 ? (
           <Empty title="No birthdays yet">Add a name and date above to see it on the calendar every year.</Empty>
         ) : (
           sorted.map((b) => (
-            <div className="list-row" key={b.id} style={{ alignItems: "center" }}>
-              <Cake size={15} style={{ color: "var(--c-birthday)" }} />
+            <div className="fm-row" key={b.id}>
+              <span className="dm-ico hb-tone" style={{ ["--tone" as string]: "var(--c-birthday)" }}><Cake size={15} aria-hidden /></span>
               <div className="grow">
                 <div className="strong truncate">{b.name}</div>
                 <div className="small muted">
@@ -384,7 +390,7 @@ export function BirthdaysModal({ onClose }: { onClose: () => void }) {
                   {b.year ? ` · ${b.year}` : ""} · {relDays(nextBirthday(b))}
                 </div>
               </div>
-              <button className="btn ghost icon sm danger" aria-label={`Delete ${b.name}'s birthday`} title="Delete" onClick={() => (removeItem("birthdays", b.id), toast("Birthday deleted", b.name))}>
+              <button className="cb-arrow fm-del" aria-label={`Delete ${b.name}'s birthday`} title="Delete" onClick={() => (removeItem("birthdays", b.id), toast("Birthday deleted", b.name))}>
                 <Trash2 size={14} />
               </button>
             </div>

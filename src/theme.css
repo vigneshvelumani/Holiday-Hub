@@ -188,7 +188,7 @@ h2.card-title, h3.card-title { margin: 0; font-weight: 600; }
 .cycle { display: grid; grid-template-columns: repeat(15, minmax(0, 1fr)); gap: 8px 4px; }
 .cycle button { border: 0; background: none; padding: 4px 0; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 3px; border-radius: 6px; font-size: 11px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
 .cycle button:hover { background: var(--surface-2); }
-.cycle button.cur { background: var(--today-soft); color: var(--today); font-weight: 700; box-shadow: inset 0 -3px 0 var(--today); }
+.cycle button.cur { background: var(--today-soft); color: var(--ink); font-weight: 700; box-shadow: inset 0 -3px 0 var(--today); }
 .wheel { width: 100%; max-width: 420px; display: block; margin: 0 auto; }
 .wheel .ring { fill: none; stroke: var(--line-strong); }
 .wheel .sector { stroke: var(--line); fill: var(--surface); }

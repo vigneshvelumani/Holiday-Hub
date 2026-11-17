@@ -110,17 +110,18 @@ function Hourly({ hours, metric, hour12, live, hot, onHot }: { hours: WeatherHou
           const newDay = i > 0 && Number(h.time.slice(11, 13)) === 0;
           return (
             <li key={h.time} data-i={i} className={(i === 0 && live ? "now" : "") + (newDay ? " newday" : "") + (i === hot ? " hot" : "")} aria-label={spoken(h, i)} onMouseEnter={() => onHot(i)} onClick={() => onHot(i)}>
-              <span className="t" aria-hidden>{label(h, i)}</span>
-              <span className="ic" aria-hidden><WeatherIcon code={h.code} isDay={h.isDay} size={22} /></span>
+              <span className="wxp-tile" aria-hidden>
+                <span className="t">{label(h, i)}</span>
+                <span className="ic"><WeatherIcon code={h.code} isDay={h.isDay} size={22} /></span>
+                <span className="tv">{Math.round(h.temp)}°</span>
+              </span>
               <span className="wxp-plot" aria-hidden>
                 {metric === "rain" && <span className="base" />}
                 {metric === "rain" ? <span className="bar" style={{ height: `${t(v) * 68}%`, animationDelay: `${i * 14}ms` }} /> : <span className="dot" style={{ top: `${y(v)}%` }} />}
-                <span className="v" style={{ top: `${y(v)}%` }}>
-                  {Math.round(v)}{metric === "temp" ? "°" : metric === "rain" ? "%" : ""}
-                </span>
+                {metric !== "temp" && <span className="v" style={{ top: `${y(v)}%` }}>{Math.round(v)}{metric === "rain" ? "%" : ""}</span>}
               </span>
               <span className="f" aria-hidden>
-                {metric === "temp" ? (h.rainProb != null ? <><Droplets size={11} /> {h.rainProb}%</> : "") : `${Math.round(h.temp)}°`}
+                {metric === "temp" ? (h.rainProb != null ? <><Droplets size={11} /> {h.rainProb}%</> : "") : metric === "rain" && h.precip ? `${h.precip} mm` : ""}
               </span>
             </li>
           );
@@ -188,8 +189,8 @@ function Compass({ dir, speed }: { dir: number | null; speed: number }) {
           <path className="head" d="M74 124 L66.5 109 L81.5 109 Z" />
         </g>
       )}
-      <text className="spd" x="74" y="70">{Math.round(speed)}</text>
-      <text className="un" x="74" y="90">km/h</text>
+      <text className="spd" x="74" y="70">{dir != null ? compass(dir) : "—"}</text>
+      <text className="un" x="74" y="90">{dir != null ? `${Math.round(dir)}°` : "no bearing"}</text>
     </svg>
   );
 }
@@ -305,9 +306,9 @@ export function WeatherPage() {
               <p>{rest ? `${rest} · ` : ""}{fmtZoneDate(now, tz)}, {fmtZone(now, tz, s.hour12)} local time · {tzLabel(tz, now)}</p>
             </div>
             <div className="wxp-tools">
-              <button className="btn glass" onClick={ui.openLocation}><MapPin size={15} /> Change location</button>
+              <button className="btn glass wxp-pill" onClick={ui.openLocation}><MapPin size={15} /> Change location</button>
               <Seg value={s.tempUnit} onChange={(v) => updateSettings({ tempUnit: v })} label="Temperature unit" options={[{ value: "C", label: "°C" }, { value: "F", label: "°F" }]} />
-              <button className="btn glass icon" onClick={refresh} disabled={loading} aria-label="Refresh now" title="Refresh now"><RefreshCw size={15} className={loading ? "spin" : ""} /></button>
+              <button className="btn glass icon wxp-pill" onClick={refresh} disabled={loading} aria-label="Refresh now" title="Refresh now"><RefreshCw size={15} className={loading ? "spin" : ""} /></button>
             </div>
           </div>
 
@@ -342,13 +343,13 @@ export function WeatherPage() {
             <div className="wxp-state" role="alert">
               <div className="t">Weather is temporarily unavailable</div>
               <div className="d">The forecast couldn't be loaded: {error}</div>
-              <button className="btn glass" style={{ marginTop: 14 }} onClick={refresh}><RefreshCw size={14} /> Try again</button>
+              <button className="btn glass wxp-pill" style={{ marginTop: 14 }} onClick={refresh}><RefreshCw size={14} /> Try again</button>
             </div>
           ) : (
             <div className="wxp-state">
               <div className="t">No weather data for this location</div>
               <div className="d">The weather service returned nothing for {s.location.name}. Try another place nearby.</div>
-              <button className="btn glass" style={{ marginTop: 14 }} onClick={refresh}><RefreshCw size={14} /> Try again</button>
+              <button className="btn glass wxp-pill" style={{ marginTop: 14 }} onClick={refresh}><RefreshCw size={14} /> Try again</button>
             </div>
           )}
         </section>
@@ -364,10 +365,10 @@ export function WeatherPage() {
 
       {!data && loading && (
         <div className="wxp-body" aria-hidden>
-          <div className="skeleton" style={{ height: 250, borderRadius: 16 }} />
+          <div className="skeleton" style={{ height: 250, borderRadius: 28 }} />
           <div className="wxp-grid">
-            <div className="skeleton" style={{ height: 420, borderRadius: 16 }} />
-            <div className="skeleton" style={{ height: 420, borderRadius: 16 }} />
+            <div className="skeleton" style={{ height: 420, borderRadius: 28 }} />
+            <div className="skeleton" style={{ height: 420, borderRadius: 28 }} />
           </div>
         </div>
       )}
@@ -375,7 +376,7 @@ export function WeatherPage() {
       {data && c && d0 && (
         <div className="wxp-body" key={s.location.name + s.tempUnit}>
           {hours.length > 0 && (
-            <section className="panel" aria-labelledby="wxp-h-hours">
+            <section className="panel wxp-sheet" aria-labelledby="wxp-h-hours">
               <div className="panel-head">
                 <h2 id="wxp-h-hours">Next {hours.length} hours</h2>
                 <div className="wxp-hours-ctl">
@@ -404,7 +405,7 @@ export function WeatherPage() {
           )}
 
           <div className="wxp-grid">
-            <section className="panel" aria-labelledby="wxp-h-days">
+            <section className="panel wxp-sheet" aria-labelledby="wxp-h-days">
               <div className="panel-head">
                 <h2 id="wxp-h-days">{days.length}-day forecast</h2>
                 <span className="wxp-hint">Select a day to open it</span>
@@ -421,7 +422,10 @@ export function WeatherPage() {
                         aria-current={today ? "date" : undefined}
                         aria-label={`${today ? "Today, " : ""}${fmt(date, { weekday: "long", day: "numeric", month: "long" })}: ${weatherLabel(d.code)}, low ${Math.round(d.tmin)}, high ${Math.round(d.tmax)} degrees${d.rainProb != null ? `, ${d.rainProb}% chance of rain` : ""}${today ? `, ${Math.round(c.temp)} degrees now` : ""}. Open this day.`}
                       >
-                        <span className="d"><b>{today ? "Today" : fmt(date, { weekday: "short" })}</b><span>{fmt(date, { day: "numeric", month: "short" })}</span></span>
+                        <span className="d">
+                          <b className="n">{fmt(date, { day: "numeric" })}</b>
+                          <span className="w"><b>{today ? "Today" : fmt(date, { weekday: "short" })}</b><span>{today ? `${fmt(date, { weekday: "short" })} · ` : ""}{fmt(date, { month: "short" })}</span></span>
+                        </span>
                         <span className="ic"><WeatherIcon code={d.code} size={20} /></span>
                         <span className="c truncate">{weatherLabel(d.code)}</span>
                         <span className="r">{d.rainProb != null ? <><Droplets size={13} /> {d.rainProb}%</> : "—"}</span>
@@ -444,7 +448,7 @@ export function WeatherPage() {
             </section>
 
             <div className="wxp-side">
-              <section className="panel" aria-labelledby="wxp-h-sun">
+              <section className="panel wxp-sheet wxp-sunmoon" aria-labelledby="wxp-h-sun">
                 <div className="panel-head"><h2 id="wxp-h-sun">{moon ? "Sun & Moon" : "Sun"}</h2></div>
                 <div className="wxp-sm" style={moon ? undefined : { gridTemplateColumns: "minmax(0, 1fr)" }}>
                   <SunArc w={data} day={d0} next={days[1]} hour12={s.hour12} />
@@ -461,11 +465,11 @@ export function WeatherPage() {
               </section>
 
               {data.air && band && (
-                <section className="panel" aria-labelledby="wxp-h-air">
+                <section className="panel wxp-pt t-pink wxp-aq" aria-labelledby="wxp-h-air">
                   <div className="panel-head"><h2 id="wxp-h-air">Air quality</h2><span className="wxp-hint">US AQI</span></div>
                   <div className="wxp-aq-top">
                     <span className="n">{Math.round(data.air.aqi)}</span>
-                    <span><span className="l" style={{ display: "block" }}>{band.label}</span><span className="u">Band {band.level + 1} of 6</span></span>
+                    <span><span className="l">{band.label}</span><span className="u">Band {band.level + 1} of 6</span></span>
                   </div>
                   <BandScale value={data.air.aqi} breaks={[0, 50, 100, 150, 200, 300, 500]} ticks={["0", "51", "101", "151", "201", "301+"]} label={`Air quality index ${Math.round(data.air.aqi)}: ${band.label}, band ${band.level + 1} of 6 from Good to Hazardous`} />
                   <p className="wxp-advice">{band.advice}</p>
@@ -479,57 +483,60 @@ export function WeatherPage() {
             </div>
           </div>
 
-          <section className="panel wxp-details" aria-labelledby="wxp-h-now">
-            <div className="panel-head"><h2 id="wxp-h-now">Conditions right now</h2><span className="wxp-hint">Measured at {placeCity(s.location)}</span></div>
+          <section className="wxp-details" aria-labelledby="wxp-h-now">
+            <div className="wxp-sech"><h2 id="wxp-h-now">Conditions right now</h2><span className="wxp-hint">Measured at {placeCity(s.location)}</span></div>
             <div className="wxp-dgrid">
-              <div className="wxp-cell wxp-wind">
-                <span className="k"><Wind size={14} /> Wind</span>
+              <div className="wxp-cell wxp-pt t-sky wxp-wind">
+                <span className="k"><Wind size={15} /> Wind</span>
                 <div className="wxp-wind-in">
                   <Compass dir={c.windDir} speed={c.wind} />
+                  <div className="wxp-wind-txt">
+                  <span className="v">{Math.round(c.wind)}<small>km/h</small></span>
                   <dl className="wxp-windfacts">
                     {c.windDir != null && <><dt>From</dt><dd>{compass(c.windDir)} · {Math.round(c.windDir)}°</dd></>}
                     {c.gusts != null && <><dt>Gusts</dt><dd>{Math.round(c.gusts)} km/h</dd></>}
                     {d0.windMax != null && <><dt>Peak {isToday ? "today" : "that day"}</dt><dd>{Math.round(d0.windMax)} km/h</dd></>}
                   </dl>
+                  </div>
                 </div>
                 <span className="m">{beaufort(c.wind)}{c.gusts != null && c.gusts - c.wind >= 15 ? ", noticeably gusty." : "."}</span>
               </div>
 
-              <div className="wxp-cell">
-                <span className="k"><Sun size={14} /> UV index</span>
+              <div className="wxp-cell wxp-pt t-peach">
+                <span className="k"><Sun size={15} /> UV index</span>
                 <span className="v">{c.uv != null ? c.uv.toFixed(c.uv < 10 ? 1 : 0) : "—"}{c.uv != null && <em>{uvBand(c.uv)}</em>}</span>
                 {c.uv != null && <BandScale value={c.uv} breaks={[0, 3, 6, 8, 11, 14]} ticks={["0", "3", "6", "8", "11+"]} label={`UV index ${c.uv.toFixed(1)}: ${uvBand(c.uv)}, on a scale from Low to Extreme`} />}
                 <span className="m">{c.uv != null ? UV_ADVICE[uvBand(c.uv)] : "Not reported for this place."}{d0.uvMax != null ? ` Peaks at ${Math.round(d0.uvMax)} (${uvBand(d0.uvMax)}) ${isToday ? "today" : "that day"}.` : ""}</span>
               </div>
 
-              <div className="wxp-cell">
-                <span className="k"><Droplets size={14} /> Humidity</span>
+              <div className="wxp-cell wxp-pt t-sage">
+                <span className="k"><Droplets size={15} /> Humidity</span>
                 <span className="v">{c.humidity}<small>%</small></span>
                 <div className="meter" aria-hidden><i style={{ width: `${c.humidity}%` }} /></div>
                 <span className="m">{c.dewPoint != null ? `Dew point ${Math.round(c.dewPoint)}° — ${dewFeel(c.dewPoint, data.unit)}.` : c.humidity >= 70 ? "The air is humid." : c.humidity <= 30 ? "The air is dry." : "Comfortable humidity."}</span>
               </div>
 
-              <div className="wxp-cell">
-                <span className="k"><CloudRain size={14} /> Precipitation</span>
+              <div className="wxp-cell wxp-pt t-lilac">
+                <span className="k"><CloudRain size={15} /> Precipitation</span>
                 <span className="v">{d0.rainProb ?? 0}<small>%</small></span>
                 <div className="meter" aria-hidden><i style={{ width: `${d0.rainProb ?? 0}%` }} /></div>
                 <span className="m">Highest chance of rain in any hour {isToday ? "today" : "that day"}. {d0.precip ? `${d0.precip} mm expected over the day.` : "No measurable rain expected."}{c.precip > 0 ? ` ${c.precip} mm falling this hour.` : ""}</span>
               </div>
 
-              <div className="wxp-cell last-row">
-                <span className="k"><Gauge size={14} /> Pressure</span>
+              <div className="wxp-cell wxp-pt t-grey">
+                <span className="k"><Gauge size={15} /> Pressure</span>
                 <span className="v">{c.pressure != null ? Math.round(c.pressure) : "—"}<small>hPa</small></span>
                 <span className="m">{c.pressure == null ? "Not reported for this place." : c.pressure < 1009 ? "Low — unsettled weather is more likely." : c.pressure > 1020 ? "High — settled weather is more likely." : "Normal for sea level."}</span>
               </div>
 
-              <div className="wxp-cell last-row last-pair">
-                <span className="k"><Eye size={14} /> Visibility</span>
+              <div className="wxp-cell wxp-pt t-grey wxp-half">
+                <span className="k"><Eye size={15} /> Visibility</span>
                 <span className="v">{c.visibility != null ? (c.visibility / 1000).toFixed(c.visibility >= 10000 ? 0 : 1) : "—"}<small>km</small></span>
                 <span className="m">{c.visibility == null ? "Not reported for this place." : c.visibility >= 10000 ? "Clear view into the distance." : c.visibility >= 4000 ? "Slightly hazy." : "Poor visibility — take care on the road."}</span>
               </div>
 
-              <div className="wxp-cell last-row last-pair">
-                <span className="k"><Cloud size={14} /> Cloud cover</span>
+              <div className="wxp-cell wxp-pt t-grey wxp-half">
+                <span className="k"><Cloud size={15} /> Cloud cover</span>
                 <span className="v">{c.cloud != null ? c.cloud : "—"}<small>%</small></span>
                 <div className="meter" aria-hidden><i style={{ width: `${c.cloud ?? 0}%` }} /></div>
                 <span className="m">{c.cloud == null ? "Not reported for this place." : c.cloud < 20 ? "Mostly clear sky." : c.cloud < 60 ? "Partly cloudy." : c.cloud < 90 ? "Mostly cloudy." : "Fully overcast."}</span>

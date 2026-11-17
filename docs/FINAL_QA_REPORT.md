@@ -115,3 +115,25 @@ page-specific colour pairs.
 | The Hindu, BBC, NYT, Google News RSS | News | none | Same-origin `feeds/*.json` built at deploy; rss2json as last resort; error with Retry |
 | Original site's Supabase functions (`news-feed`, `zodiac-forecast`) | "Tech wire" tab, horoscope | the original site's public anon key (overridable with `VITE_FEED_BASE` / `VITE_FEED_KEY`) | Error state; the rest of the app is unaffected |
 | Google Fonts | Manrope, Fraunces | none | System fonts |
+
+## Visual system v4 — "mono + pastel" (17 November 2026)
+
+Rebuilt to the reference screenshots supplied by the owner: black chrome with rounded dark panels
+(mini month, this week's to-dos, calendar toggles), a light work panel with a lime → lilac → blue
+wash, flat pastel blocks, very large date numerals, pill controls with a black primary, lime as the
+single "today / now" colour. Tokens live in `src/tokens.css`.
+
+- Week and Day views are a real time grid (`src/components/WeekGrid.tsx`): day tiles, all-day row,
+  pastel blocks positioned by time, side-by-side overlaps, a "now" line, drag to another day.
+  Items without an end time are drawn 60 minutes long (reminders 45) — a drawing choice only.
+- On phones the week grid shows two or three days and scrolls sideways inside its own box.
+- The shell no longer shows the weather sky; the animated sky remains on the weather card, the
+  Weather page and the World clock hero.
+- Not carried over from the references, because the app has no accounts: avatars, sharing, pricing.
+
+Checked: type-check, 142 unit checks, production build, 27 of 27 browser tests; contrast of every
+pastel ink/fill pair (8.1–11.5:1) and lime with its ink (15.1:1); no horizontal overflow at 375 /
+768 / 1280 / 1920 on every page. Seen by eye: dashboard (1440 light and dark, 375), calendar month
+(1440 dark), week grid (1440 light, 375). Other pages and widths rest on measurements, because the
+preview pane was hidden for much of the work. Not checked: reduced motion by emulation beyond the
+existing browser test, a real pointer drag in the week grid, a real screen reader.

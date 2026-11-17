@@ -1,208 +1,240 @@
-/* Tasks + Reminders pages. Everything here is prefixed wk- and built on the tokens in premium.css. */
+/* Tasks + Reminders pages — visual system v4 ("mono + pastel"): flat pastel stat tiles with huge numerals,
+   checklists grouped in rounded tiles, pill controls, black primary. Everything is prefixed wk- and built on the
+   tokens in tokens.css. Rules are nested under .wk (shared classes under .page.wk) so they outrank the shared
+   layers, which are emitted after this file. */
+.wk {
+  --wk-gap: 12px;
+  max-width: 1240px;
 
-.wk { max-width: 1240px; }
-.wk .page-sub { max-width: 62ch; }
-.wk-stack { display: flex; flex-direction: column; gap: 16px; }
+  .page-sub { max-width: 62ch; }
+  .wk-stack { display: flex; flex-direction: column; gap: var(--wk-gap); }
 
-/* ── summary strip: big numerals that double as filters ─────────────────── */
-.panel.wk-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(220px, 1.25fr); padding: 6px; gap: 0; }
-.panel.wk-summary.three { grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(240px, 1.6fr); }
-.wk-stat { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 12px 16px 13px; border: 0; border-radius: 11px; background: none; color: var(--ink); text-align: left; cursor: pointer; min-width: 0; transition: background-color var(--dur-1) ease; }
-.wk-stat + .wk-stat::before, .wk-aside::before { content: ""; position: absolute; left: 0; top: 14px; bottom: 14px; width: 1px; background: var(--line); }
-.wk-stat:hover { background: var(--surface-2); }
-.wk-stat:active { transform: scale(0.985); }
-.wk-stat:focus-visible { border-radius: 11px; outline-offset: -2px; }
-.wk-stat[aria-pressed="true"]:hover { background: color-mix(in srgb, var(--accent) 16%, var(--surface)); }
-.wk-stat[aria-pressed="true"] { background: var(--accent-soft); }
-.wk-stat[aria-pressed="true"]::before, .wk-stat[aria-pressed="true"] + .wk-stat::before, .wk-stat[aria-pressed="true"] + .wk-aside::before { display: none; }
-.wk-stat .n { font-size: 34px; line-height: 1.05; font-weight: 800; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; }
-.wk-stat .k { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--ink-2); white-space: nowrap; }
-.wk-stat .k svg { flex: none; color: var(--ink-3); }
-.wk-stat[aria-pressed="true"] .k, .wk-stat[aria-pressed="true"] .k svg { color: var(--accent); }
-.wk-stat.alert .n, .wk-stat.alert .k, .wk-stat.alert .k svg { color: var(--danger); }
-.wk-aside { position: relative; display: flex; flex-direction: column; justify-content: center; gap: 4px; padding: 12px 18px 13px 20px; min-width: 0; }
-.wk-aside .big { font-size: 17px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.3; }
-/* a long reminder gets two lines before it is cut, so its meaning survives */
-.wk-aside .big.clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
-.wk-aside .meter { margin: 5px 0 3px; }
-.wk-aside .small { font-size: 13px; color: var(--ink-3); }
+  /* ── shared controls, skinned for these pages ───────────────────────────── */
+  /* (buttons, the segmented control, inputs and the checkbox take the shared v4 skins; only page-specific bits here) */
+  &.page .page-head .btn.primary { height: 44px; padding: 0 22px; font-size: 15px; }
+  &.page .btn.ghost { border-color: transparent; }
+  &.page .meter { height: 8px; border-radius: var(--pill); background: var(--surface-2); }
+  &.page .meter > i { border-radius: var(--pill); background: var(--ink); }
 
-/* ── list panel ─────────────────────────────────────────────────────────── */
-.panel.wk-list { padding: 16px 20px 8px; }
-.wk-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px 16px; flex-wrap: wrap; }
-.wk-shown { font-size: 13px; font-weight: 600; color: var(--ink-3); }
+  /* ── summary: flat pastel stat tiles that double as filters ─────────────── */
+  .wk-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(240px, 1.35fr); gap: var(--wk-gap); min-width: 0; }
+  .wk-summary.three { grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(260px, 1.6fr); }
+  .wk-stat { position: relative; display: flex; flex-direction: column; align-items: flex-start; justify-content: space-between; gap: 18px; min-width: 0; min-height: 152px; padding: 16px 18px 16px; border: 0; border-radius: var(--radius-lg); background: var(--p-grey); color: var(--p-grey-ink); font: inherit; text-align: left; cursor: pointer; transition: background-color var(--dur-1) ease, box-shadow var(--dur-1) ease; }
+  .wk-stat.t-lilac { background: var(--p-lilac); color: var(--p-lilac-ink); }
+  .wk-stat.t-lime { background: var(--today); color: var(--today-ink); }
+  .wk-stat.t-pink { background: var(--p-pink); color: var(--p-pink-ink); }
+  .wk-stat.t-sage { background: var(--p-sage); color: var(--p-sage-ink); }
+  .wk-stat:hover { box-shadow: inset 0 0 0 2px color-mix(in srgb, currentColor 35%, transparent); }
+  .wk-stat:active { transform: scale(0.985); }
+  .wk-stat:focus-visible { outline-offset: 3px; }
+  .wk-stat .k { display: inline-flex; align-items: center; gap: 7px; padding-right: 30px; font-size: 14px; font-weight: 700; letter-spacing: -0.01em; }
+  .wk-stat .k svg { flex: none; }
+  .wk-stat .n { font-size: 68px; line-height: 0.86; font-weight: 600; letter-spacing: -0.065em; font-variant-numeric: tabular-nums; margin-left: -3px; }
+  /* the tile whose list is showing: a ring in its own ink and a tick, not only a colour */
+  .wk-stat .on { position: absolute; top: 14px; right: 14px; width: 24px; height: 24px; border-radius: 50%; display: none; place-items: center; background: currentColor; }
+  .wk-stat .on svg { color: #fff; }
+  .wk-stat[aria-pressed="true"] { box-shadow: inset 0 0 0 2.5px currentColor; }
+  .wk-stat[aria-pressed="true"] .on { display: grid; }
 
-.wk-filters { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 12px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
-.wk-search { position: relative; flex: 3 1 220px; min-width: 180px; }
-.wk-search svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--ink-3); pointer-events: none; }
-.wk-search .input { padding-left: 36px; }
-.wk-fields { display: contents; }
-.wk-fields .select { flex: 1 1 136px; width: auto; min-width: 136px; max-width: 220px; }
-.wk-date { display: inline-flex; flex: 1 1 190px; align-items: center; gap: 7px; font-size: 13px; font-weight: 700; color: var(--ink-2); }
-.wk-date .input { flex: 1; width: auto; min-width: 130px; }
-.wk-clear { flex: none; }
-.btn.wk-toggle { display: none; }
-.wk-toggle .wk-pill { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: var(--accent); color: var(--accent-ink); font-size: 12px; font-weight: 800; }
+  .wk-aside { display: flex; flex-direction: column; justify-content: center; gap: 6px; min-width: 0; padding: 18px 22px; border-radius: var(--radius-lg); background: var(--surface); }
+  .wk-aside .big { font-size: 22px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.2; }
+  /* a long reminder gets two lines before it is cut, so its meaning survives */
+  .wk-aside .big.clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+  .wk-aside .meter { margin: 8px 0 4px; }
+  .wk-aside .small { font-size: 13.5px; color: var(--ink-3); }
 
-.wk-group { padding-top: 16px; }
-.wk-group-h { display: flex; align-items: baseline; gap: 8px; padding-bottom: 6px; font-size: 12px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-2); }
-.wk-group-h svg { align-self: center; flex: none; }
-.wk-group-h .c { font-weight: 700; letter-spacing: 0; color: var(--ink-3); font-variant-numeric: tabular-nums; }
-.wk-group-h .d { font-weight: 600; letter-spacing: 0; text-transform: none; font-size: 13px; color: var(--ink-3); }
-.wk-group-h.alert { color: var(--danger); }
+  /* ── the list: a tools tile, then one rounded tile per group ────────────── */
+  .wk-list { display: flex; flex-direction: column; gap: var(--wk-gap); min-width: 0; }
+  .wk-tools { padding: 14px 16px; border-radius: var(--radius); background: var(--surface); }
+  .wk-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px 16px; flex-wrap: wrap; }
+  .wk-shown { font-size: 13px; font-weight: 700; color: var(--ink-3); }
 
-.wk-rows { list-style: none; margin: 0; padding: 0; }
-.wk-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; grid-template-areas: "check main side acts"; align-items: center; gap: 4px 14px; padding: 11px 8px; margin: 0 -8px; border-top: 1px solid transparent; transition: background-color var(--dur-1) ease; }
-.wk-row.timed { grid-template-columns: 92px auto minmax(0, 1fr) auto; grid-template-areas: "time check main acts"; }
-.wk-row + .wk-row { border-top-color: var(--line); }
-.wk-row:hover, .wk-row:focus-within { background: var(--surface-2); border-top-color: transparent; border-radius: 11px; }
-.wk-row:hover + .wk-row, .wk-row:focus-within + .wk-row { border-top-color: transparent; }
-/* the box lines up with the first line of the title, however many lines the title takes */
-.wk-row > .check { grid-area: check; position: relative; align-self: start; margin-top: -2px; }
-@media (hover: hover) {
-  /* a faint tick previews what the click will do */
-  .wk-row > .check:hover { border-color: var(--accent); }
-  .wk-row > .check:not([aria-checked="true"]):hover { color: color-mix(in srgb, var(--accent) 45%, transparent); }
-  .wk-row > .check:not([aria-checked="true"]):hover svg { stroke-dashoffset: 0; }
+  .wk-filters { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  .wk-search { position: relative; flex: 3 1 220px; min-width: 180px; }
+  .wk-search svg { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--ink-3); pointer-events: none; }
+  &.page .wk-search .input { width: 100%; height: 40px; padding-left: 40px; border-radius: var(--pill); }
+  &.page .wk-fields .select, &.page .wk-fields .input { height: 40px; }
+  .wk-fields { display: contents; }
+  &.page .wk-fields .select { flex: 1 1 136px; width: auto; min-width: 136px; max-width: 220px; }
+  .wk-date { display: inline-flex; flex: 1 1 190px; align-items: center; gap: 7px; font-size: 13px; font-weight: 700; color: var(--ink-2); }
+  &.page .wk-date .input { flex: 1; width: auto; min-width: 130px; }
+  .wk-clear { flex: none; }
+  &.page .btn.wk-toggle { display: none; }
+  .wk-toggle .wk-pill { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: var(--btn); color: var(--btn-ink); font-size: 12px; font-weight: 800; }
+
+  .wk-group { padding: 18px 20px 10px; border-radius: var(--radius); background: var(--surface); }
+  .wk-group-h { display: flex; align-items: center; gap: 9px; padding-bottom: 8px; font-size: 18px; line-height: 1.2; font-weight: 800; letter-spacing: -0.025em; color: var(--ink); }
+  .wk-group-h svg { flex: none; }
+  .wk-group-h .c { display: inline-grid; place-items: center; min-width: 26px; height: 24px; padding: 0 8px; border-radius: var(--pill); background: var(--p-grey); color: var(--p-grey-ink); font-size: 12.5px; font-weight: 800; letter-spacing: 0; font-variant-numeric: tabular-nums; }
+  .wk-group-h .d { margin-left: auto; font-size: 13px; font-weight: 600; letter-spacing: 0; color: var(--ink-3); }
+  .wk-group-h.alert .c { background: var(--p-pink); color: var(--p-pink-ink); }
+
+  .wk-rows { list-style: none; margin: 0 -10px; padding: 0; }
+  .wk-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; grid-template-areas: "check main side acts"; align-items: center; gap: 4px 14px; padding: 10px; border-radius: 16px; transition: background-color var(--dur-1) ease; }
+  .wk-row.timed { grid-template-columns: 104px auto minmax(0, 1fr) auto; grid-template-areas: "time check main acts"; }
+  .wk-row:hover, .wk-row:focus-within { background: var(--surface-2); }
+  /* the box lines up with the first line of the title, however many lines the title takes */
+  &.page .wk-row > .check { grid-area: check; position: relative; align-self: start; margin-top: 0; }
+  &.page .wk-row.timed > .check { margin-top: 5px; }
+  @media (hover: hover) {
+    /* a faint tick previews what the click will do */
+    &.page .wk-row > .check:hover { border-color: var(--ink); }
+    &.page .wk-row > .check:not([aria-checked="true"]):hover { color: var(--ink-3); }
+    &.page .wk-row > .check:not([aria-checked="true"]):hover svg { stroke-dashoffset: 0; }
+  }
+  .wk-main { grid-area: main; min-width: 0; border: 0; background: none; padding: 0; font: inherit; text-align: left; color: inherit; cursor: pointer; border-radius: 8px; }
+  .wk-title { display: block; font-size: 15.5px; font-weight: 700; letter-spacing: -0.015em; line-height: 1.4; overflow-wrap: anywhere; }
+  .wk-main:hover .wk-title { text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: 3px; }
+  .wk-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 1px 0; margin-top: 1px; font-size: 13px; color: var(--ink-3); }
+  .wk-meta > span { display: inline-flex; align-items: flex-start; gap: 4px; min-width: 0; margin-right: 3px; }
+  .wk-meta > span > svg { flex: none; margin-top: 4px; }
+  .wk-meta > span:not(:last-child)::after { content: "·"; margin: 0 4px 0 3px; color: var(--ink-3); font-weight: 500; }
+  .wk-meta .late { color: var(--danger); font-weight: 700; }
+  .wk-meta .badge { margin-left: 2px; height: 20px; padding: 0 8px; border-radius: var(--pill); background: var(--p-sky); color: var(--p-sky-ink); font-size: 12px; font-weight: 700; }
+  .wk-row.done .wk-title, .wk-row.done:hover .wk-title { color: var(--ink-3); text-decoration: line-through; text-decoration-thickness: 1.5px; }
+  .wk-row.done .wk-time .t { color: var(--ink-3); }
+
+  /* a row ticked in a list of open items: it shows its tick and strike-through for a beat, then folds away */
+  .wk-row.leaving { pointer-events: none; overflow: hidden; max-height: 240px; animation: wk-leave 520ms var(--ease) both; }
+  &.page .wk-row.leaving .wk-tick { grid-area: check; align-self: start; margin-top: 0; background: var(--btn); border-color: var(--btn); color: var(--btn-ink); cursor: default; animation: wk-tick 300ms var(--ease) both; }
+  &.page .wk-row.timed.leaving .wk-tick { margin-top: 5px; }
+  .wk-row.leaving .wk-tick svg { stroke-dashoffset: 0; }
+  .wk-row.leaving .wk-main { cursor: default; }
+
+  /* reminders: the time as a large numeral block at the left of the row */
+  .wk-time { grid-area: time; align-self: start; display: flex; flex-direction: column; gap: 3px; min-width: 0; white-space: nowrap; }
+  .wk-time .t { font-size: 30px; line-height: 1; font-weight: 600; letter-spacing: -0.05em; font-variant-numeric: tabular-nums; }
+  .wk-time .u { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 6px; }
+  .wk-time .ap { font-size: 12.5px; font-weight: 700; color: var(--ink-3); }
+  .wk-time small { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: var(--pill); background: var(--p-pink); color: var(--p-pink-ink); font-size: 12px; font-weight: 800; letter-spacing: 0; }
+
+  /* priority: a small pastel pill with an icon and the word */
+  .wk-prio { grid-area: side; display: inline-flex; align-items: center; justify-self: start; gap: 4px; height: 26px; padding: 0 11px 0 8px; border-radius: var(--pill); background: var(--p-grey); color: var(--p-grey-ink); font-size: 12.5px; font-weight: 700; white-space: nowrap; }
+  .wk-prio.high { background: var(--p-pink); color: var(--p-pink-ink); }
+  .wk-prio.medium { background: var(--p-peach); color: var(--p-peach-ink); }
+
+  .wk-acts { grid-area: acts; display: flex; align-items: center; gap: 2px; }
+  &.page .wk-acts .btn { width: 34px; height: 34px; min-width: 0; min-height: 0; padding: 0; border-color: transparent; background: none; color: var(--ink-2); }
+  &.page .wk-acts .btn.danger { color: var(--danger); }
+  &.page .wk-acts .btn:hover { background: color-mix(in srgb, var(--ink) 9%, transparent); color: var(--ink); }
+  &.page .wk-acts .btn.danger:hover { background: color-mix(in srgb, var(--danger) 13%, transparent); color: var(--danger); }
+  /* with a mouse the actions stay visible but quiet (so they can be found), and take full colour on the row in use */
+  @media (hover: hover) and (pointer: fine) and (min-width: 901px) {
+    &.page .wk-acts .btn, &.page .wk-acts .btn.danger { color: var(--ink-3); }
+    &.page .wk-row:hover .wk-acts .btn, &.page .wk-row:focus-within .wk-acts .btn { color: var(--ink-2); }
+    &.page .wk-row:hover .wk-acts .btn.danger, &.page .wk-row:focus-within .wk-acts .btn.danger { color: var(--danger); }
+    &.page .wk-row .wk-acts .btn:hover { color: var(--ink); }
+    &.page .wk-row .wk-acts .btn.danger:hover { color: var(--danger); }
+  }
+
+  /* "+ Add task": the last row of the list, lined up with the checkboxes */
+  .wk-add { display: flex; align-items: center; gap: 14px; width: 100%; min-height: 56px; padding: 0 30px; border: 0; border-radius: var(--radius); background: var(--surface); color: var(--ink-2); font: inherit; font-size: 15px; font-weight: 700; text-align: left; cursor: pointer; transition: background-color var(--dur-1) ease, color var(--dur-1) ease; }
+  .wk-add .box { width: 24px; height: 24px; border-radius: 8px; display: grid; place-items: center; background: var(--p-grey); color: var(--p-grey-ink); flex: none; transition: background-color var(--dur-1) ease, color var(--dur-1) ease; }
+  .wk-add:hover { color: var(--ink); }
+  .wk-add:hover .box { background: var(--btn); color: var(--btn-ink); }
+  .wk-add:active { transform: scale(0.995); }
+
+  /* ── empty state ────────────────────────────────────────────────────────── */
+  .wk-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 30px 28px 30px; border-radius: var(--radius); background: var(--surface); }
+  .wk-empty .ico { width: 52px; height: 52px; border-radius: 18px; display: grid; place-items: center; background: var(--p-lilac); color: var(--p-lilac-ink); margin-bottom: 10px; }
+  .wk-empty h3 { font-size: 26px; line-height: 1.15; font-weight: 800; letter-spacing: -0.035em; }
+  .wk-empty p { max-width: 48ch; color: var(--ink-3); }
+  .wk-empty .acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+
+  /* ── reminders: list + alert status side by side ────────────────────────── */
+  .wk-cols { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: var(--wk-gap); align-items: start; }
+  /* a calm pastel panel whose colour, icon and words all say the same thing */
+  .wk-perm { display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 20px 22px 22px; border-radius: var(--radius-lg); background: var(--p-grey); color: var(--p-grey-ink); overflow-wrap: anywhere; }
+  .wk-perm.is-granted { background: var(--p-sage); color: var(--p-sage-ink); }
+  .wk-perm.is-default { background: var(--p-lilac); color: var(--p-lilac-ink); }
+  .wk-perm.is-denied { background: var(--p-peach); color: var(--p-peach-ink); }
+  .wk-perm-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 10px; }
+  .wk-perm-head h2 { font-size: 20px; font-weight: 800; letter-spacing: -0.03em; }
+  .wk-state { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border-radius: var(--pill); font-size: 12.5px; font-weight: 800; background: color-mix(in srgb, currentColor 12%, transparent); white-space: nowrap; }
+  .wk-perm p { font-size: 14px; font-weight: 500; }
+  &.page .wk-perm .btn { align-self: flex-start; margin-top: 2px; }
+  &.page .wk-perm .btn.primary { background: var(--p-lilac-ink); border-color: var(--p-lilac-ink); color: #fff; }
+  &.page .wk-perm .btn.primary:hover { background: color-mix(in srgb, var(--p-lilac-ink) 86%, #fff); }
+  .wk-facts { list-style: none; margin: 4px 0 0; padding: 12px 0 0; border-top: 1px solid color-mix(in srgb, currentColor 22%, transparent); display: flex; flex-direction: column; gap: 8px; font-size: 13px; font-weight: 500; }
+  .wk-facts li { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 9px; }
+  .wk-facts svg { margin-top: 2px; }
+
+  /* between phone and desktop the notifications panel sits under the list: use the width instead of one long column */
+  @media (min-width: 641px) and (max-width: 1180px) {
+    .wk-perm { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px 28px; align-items: start; }
+    .wk-perm-head { grid-column: 1 / -1; }
+    .wk-perm .wk-facts { grid-column: 2; grid-row: 2 / span 2; margin: 0; padding: 0 0 0 28px; border-top: 0; border-left: 1px solid color-mix(in srgb, currentColor 22%, transparent); }
+    &.page .wk-perm .btn { justify-self: start; }
+  }
+
+  @media (max-width: 1180px) {
+    .wk-cols { grid-template-columns: minmax(0, 1fr); }
+    .wk-summary { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .wk-summary.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .wk-aside { grid-column: 1 / -1; padding: 16px 20px; }
+  }
+
+  @media (max-width: 900px) {
+    --wk-gap: 10px;
+    .wk-stat { min-height: 124px; padding: 14px 14px 14px; border-radius: 24px; }
+    .wk-stat .n { font-size: 52px; }
+    .wk-stat .k { font-size: 13px; line-height: 1.25; }
+    .wk-stat .on { top: 11px; right: 11px; }
+    .wk-aside { border-radius: 24px; gap: 3px; }
+    .wk-summary:not(.three) .wk-aside .eyebrow { display: none; }
+    .wk-aside .big { font-size: 19px; }
+    .wk-tools { padding: 12px; }
+    /* every tab stays on screen: they share the row, and wrap to a second one rather than scroll out of sight */
+    &.page .seg { display: flex; flex-wrap: wrap; width: 100%; overflow: visible; border-radius: 22px; }
+    &.page .seg button { height: 38px; padding: 0 10px; flex: 1 0 auto; }
+
+    .wk-filters { gap: 8px; }
+    .wk-search { flex: 1 1 0; min-width: 0; }
+    &.page .wk-search .input, &.page .wk-fields .input, &.page .wk-fields .select { height: 42px; }
+    &.page .btn.wk-toggle { display: inline-flex; height: 42px; }
+    .wk-fields { display: none; flex-basis: 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .wk-filters[data-open="true"] .wk-fields { display: grid; }
+    &.page .wk-fields .select { width: 100%; max-width: none; min-width: 0; }
+    .wk-date { display: flex; flex-direction: column; align-items: stretch; gap: 4px; font-size: 12px; min-width: 0; max-width: none; }
+    &.page .wk-date .input { flex: none; width: 100%; min-width: 0; }
+    &.page .wk-fields .wk-clear { grid-column: 1 / -1; height: 42px; }
+
+    .wk-group { padding: 16px 16px 8px; }
+    .wk-rows { margin: 0 -8px; }
+    .wk-row { grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "check main main" ". side acts"; align-items: start; gap: 4px 12px; padding: 10px 8px 6px; }
+    .wk-row.timed { grid-template-columns: 84px auto minmax(0, 1fr); grid-template-areas: "time check main" ". . acts"; }
+    &.page .wk-row > .check::after { content: ""; position: absolute; inset: -8px; }
+    .wk-time .t { font-size: 26px; }
+    .wk-prio { align-self: center; }
+    .wk-acts { justify-self: end; gap: 4px; }
+    &.page .wk-acts .btn.icon.sm { width: 38px; height: 38px; }
+    .wk-add { padding: 0 24px; gap: 12px; }
+    .wk-empty { padding: 24px 20px; }
+    .wk-empty h3 { font-size: 22px; }
+  }
+
+  /* tablets: there is room to keep priority and the actions on the title's line */
+  @media (min-width: 641px) and (max-width: 900px) {
+    .wk-row { grid-template-columns: auto minmax(0, 1fr) auto auto; grid-template-areas: "check main side acts"; align-items: center; gap: 4px 12px; padding: 8px; }
+    .wk-row.timed { grid-template-columns: 92px auto minmax(0, 1fr) auto; grid-template-areas: "time check main acts"; }
+  }
+
+  /* phones: stat tiles two by two; the reminder time keeps its place at the left, a little smaller */
+  @media (max-width: 640px) {
+    .wk-summary:not(.three) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .wk-summary.three .wk-stat { min-height: 112px; padding: 12px; }
+    .wk-summary.three .wk-stat .n { font-size: 44px; }
+    .wk-summary.three .wk-stat .k svg { display: none; }
+    .wk-summary.three .wk-stat .on { width: 20px; height: 20px; top: 9px; right: 9px; }
+    &.page .seg button { padding: 0 8px; font-size: 13px; }
+    .wk-row.timed { grid-template-columns: 72px auto minmax(0, 1fr); }
+    .wk-time .t { font-size: 23px; }
+    .wk-perm { padding: 18px; border-radius: 24px; }
+  }
 }
-.wk-row > .wk-time { align-self: start; }
-.wk-main { grid-area: main; min-width: 0; border: 0; background: none; padding: 0; text-align: left; color: inherit; cursor: pointer; border-radius: 6px; }
-.wk-title { display: block; font-size: 15px; font-weight: 800; letter-spacing: -0.01em; line-height: 1.35; overflow-wrap: anywhere; transition: color var(--dur-2) ease; }
-.wk-main:hover .wk-title { color: var(--accent); }
-.wk-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 1px 0; margin-top: 1px; font-size: 13px; color: var(--ink-3); }
-.wk-meta > span { display: inline-flex; align-items: flex-start; gap: 4px; min-width: 0; }
-.wk-meta > span > svg { flex: none; margin-top: 4px; }
-.wk-meta > span:not(:last-child)::after { content: "·"; margin: 0 4px 0 3px; color: var(--ink-3); font-weight: 500; }
-.wk-meta > span { margin-right: 3px; }
-.wk-meta .late { color: var(--danger); font-weight: 700; }
-.wk-meta .badge { margin-left: 2px; font-size: 12px; }
-.wk-row.done .wk-title { color: var(--ink-3); text-decoration: line-through; text-decoration-thickness: 1.5px; }
-.wk-row.done .wk-time { color: var(--ink-3); }
 
-/* a task ticked in a list of open tasks: it shows its tick and strike-through for a beat, then folds away */
-.wk-row.leaving { pointer-events: none; overflow: hidden; max-height: 240px; animation: wk-leave 520ms var(--ease) both; }
-.wk-row.leaving .wk-tick { grid-area: check; align-self: start; margin-top: -2px; background: var(--accent); border-color: var(--accent); color: var(--accent-ink); cursor: default; animation: wk-tick 300ms var(--ease) both; }
-.wk-row.leaving .wk-tick svg { stroke-dashoffset: 0; }
-.wk-row.leaving .wk-main { cursor: default; }
 @keyframes wk-leave {
   0%, 50% { opacity: 1; max-height: 240px; }
   100% { opacity: 0; max-height: 0; padding-top: 0; padding-bottom: 0; }
 }
 @keyframes wk-tick { 0% { transform: scale(0.8); } 55% { transform: scale(1.18); } 100% { transform: none; } }
-
-.wk-time { grid-area: time; font-size: 17px; font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; white-space: nowrap; line-height: 1.2; }
-.wk-time small { display: block; font-size: 12px; font-weight: 700; letter-spacing: 0; color: var(--danger); }
-
-/* priority: icon + word + colour */
-.wk-prio { grid-area: side; display: inline-flex; align-items: center; gap: 4px; min-width: 82px; font-size: 12.5px; font-weight: 700; white-space: nowrap; color: var(--ink-3); }
-.wk-prio.high { color: var(--danger); }
-.wk-prio.medium { color: var(--warn); }
-
-.wk-acts { grid-area: acts; display: flex; align-items: center; gap: 2px; }
-.wk-acts .btn { color: var(--ink-2); }
-.wk-acts .btn.danger { color: var(--danger); }
-.wk-acts .btn:hover { background: color-mix(in srgb, var(--ink) 8%, transparent); color: var(--ink); }
-.wk-acts .btn.danger:hover { background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger); }
-/* with a mouse the actions stay visible but quiet (so they can be found), and take full colour on the row in use */
-@media (hover: hover) and (pointer: fine) and (min-width: 901px) {
-  .wk-acts .btn, .wk-acts .btn.danger { color: var(--ink-3); transition: color var(--dur-1) ease, background-color var(--dur-1) ease; }
-  .wk-row:hover .wk-acts .btn, .wk-row:focus-within .wk-acts .btn { color: var(--ink-2); }
-  .wk-row:hover .wk-acts .btn.danger, .wk-row:focus-within .wk-acts .btn.danger { color: var(--danger); }
-  .wk-row .wk-acts .btn:hover { color: var(--ink); }
-  .wk-row .wk-acts .btn.danger:hover { color: var(--danger); }
-}
-
-/* ── empty state ────────────────────────────────────────────────────────── */
-.wk-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 30px 0 26px; max-width: 46ch; }
-.wk-empty .ico { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); margin-bottom: 8px; }
-.wk-empty h3 { font-size: 19px; font-weight: 800; letter-spacing: -0.025em; }
-.wk-empty p { color: var(--ink-3); }
-.wk-empty .acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-
-/* ── reminders: list + alert status side by side ────────────────────────── */
-.wk-cols { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: start; }
-.panel.wk-perm { gap: 8px; }
-.wk-perm .panel-head { margin-bottom: 0; }
-.wk-state { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 8px; font-size: 12.5px; font-weight: 800; background: var(--surface-2); color: var(--ink-2); white-space: nowrap; }
-.wk-state.on { background: color-mix(in srgb, var(--ok) 13%, var(--surface)); color: var(--ok); }
-.wk-state.blocked { background: color-mix(in srgb, var(--danger) 11%, var(--surface)); color: var(--danger); }
-.wk-perm p { font-size: 14px; color: var(--ink-2); }
-.wk-perm .btn { align-self: flex-start; margin-top: 4px; }
-.wk-facts { list-style: none; margin: 6px 0 0; padding: 10px 0 0; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; font-size: 13px; color: var(--ink-3); }
-.wk-facts li { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 9px; }
-.wk-facts svg { margin-top: 2px; color: var(--ink-3); }
-
-/* between phone and desktop the notifications panel sits under the list: use the width instead of one long column */
-@media (min-width: 641px) and (max-width: 1180px) {
-  .panel.wk-perm { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px 28px; align-items: start; }
-  .wk-perm .panel-head { grid-column: 1 / -1; }
-  .wk-perm .wk-facts { grid-column: 2; grid-row: 2 / span 2; margin: 0; padding: 0 0 0 28px; border-top: 0; border-left: 1px solid var(--line); }
-  .wk-perm .btn { justify-self: start; }
-}
-
-@media (max-width: 1180px) {
-  .wk-cols { grid-template-columns: minmax(0, 1fr); }
-  .panel.wk-summary { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-  .panel.wk-summary.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .wk-aside { grid-column: 1 / -1; margin: 4px 10px 0; padding: 12px 6px 10px; border-top: 1px solid var(--line); }
-  .wk-aside::before { display: none; }
-}
-
-@media (max-width: 900px) {
-  .wk-stack { gap: 12px; }
-  .wk .page-head .btn.primary { height: 40px; }
-  .panel.wk-summary { padding: 5px; }
-  .wk-stat { padding: 9px 9px 10px; min-height: 60px; }
-  .wk-stat .n { font-size: 25px; }
-  .wk-stat .k { font-size: 12px; white-space: normal; line-height: 1.25; }
-  .wk-stat .k svg { display: none; }
-  .wk-aside { margin: 2px 8px 0; padding: 10px 4px 8px; gap: 2px; }
-  .wk-summary:not(.three) .wk-aside .eyebrow { display: none; }
-  .wk-aside .big { font-size: 15px; }
-  .panel.wk-list { padding: 12px 14px 6px; }
-  /* every tab stays on screen: they share the row, and wrap to a second one rather than scroll out of sight */
-  .wk .seg { display: flex; flex-wrap: wrap; width: 100%; overflow: visible; }
-  .wk .seg button { height: 36px; padding: 0 10px; flex: 1 0 auto; }
-
-  .wk-filters { gap: 8px; }
-  .wk-search { flex: 1 1 0; min-width: 0; }
-  .wk-search .input, .wk-fields .input, .wk-fields .select { height: 40px; }
-  .btn.wk-toggle { display: inline-flex; height: 40px; }
-  .wk-fields { display: none; flex-basis: 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-  .wk-filters[data-open="true"] .wk-fields { display: grid; }
-  .wk-fields .select { width: 100%; max-width: none; min-width: 0; }
-  .wk-date { display: flex; flex-direction: column; align-items: stretch; gap: 4px; font-size: 12px; min-width: 0; max-width: none; }
-  .wk-date .input { flex: none; width: 100%; min-width: 0; }
-  .wk-fields .wk-clear { grid-column: 1 / -1; height: 40px; }
-
-  .wk-row { grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "check main main" ". side acts"; align-items: start; gap: 2px 12px; padding: 12px 6px 6px; margin: 0 -6px; }
-  .wk-row.timed { grid-template-columns: 70px auto minmax(0, 1fr); grid-template-areas: "time check main" ". . acts"; }
-  .wk-row > .check, .wk-row.leaving .wk-tick { margin-top: 1px; }
-  .wk-row > .check::after { content: ""; position: absolute; inset: -7px; }
-  .wk-time { font-size: 15px; padding-top: 2px; }
-  .wk-prio { align-self: center; min-width: 0; }
-  .wk-acts { justify-self: end; gap: 4px; }
-  .wk-acts .btn.icon.sm { width: 36px; height: 36px; }
-  .wk-empty { padding: 22px 0 20px; }
-  .wk-empty .btn { height: 40px; }
-  .wk-perm .btn.sm { height: 40px; padding: 0 14px; }
-}
-
-/* tablets: there is room to keep priority and the actions on the title's line */
-@media (min-width: 641px) and (max-width: 900px) {
-  .wk-row { grid-template-columns: auto minmax(0, 1fr) auto auto; grid-template-areas: "check main side acts"; align-items: center; gap: 4px 12px; padding: 10px 6px; }
-  .wk-row.timed { grid-template-columns: 76px auto minmax(0, 1fr) auto; grid-template-areas: "time check main acts"; }
-  .wk-row > .check, .wk-row.leaving .wk-tick { margin-top: -2px; }
-  .wk-time { padding-top: 0; }
-  .wk-prio { min-width: 76px; }
-}
-
-/* phones: the time moves above the message so the message gets the full width */
-@media (max-width: 640px) {
-  .wk .seg button { padding: 0 6px; }
-  .wk-row.timed { grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "check time" "check main" ". acts"; gap: 0 12px; }
-  .wk-row.timed.leaving { grid-template-areas: "check time" "check main"; }
-  .wk-time { display: flex; align-items: baseline; gap: 8px; padding-top: 0; font-size: 13px; letter-spacing: 0; color: var(--ink-2); }
-  .wk-time small { display: inline; }
-  .wk-row.timed > .check { margin-top: 3px; }
-}

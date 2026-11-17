@@ -101,13 +101,13 @@ export function TimeConverter() {
   };
 
   return (
-    <section className="panel tt-card" aria-labelledby="h-conv">
+    <section className="panel tt-card tt-float" aria-labelledby="h-conv">
       <div className="panel-head">
         <div>
           <h2 id="h-conv">Time converter</h2>
           <p className="tt-lede">Enter a time anywhere; every clock on your list shows the same moment, daylight-saving changes included.</p>
         </div>
-        <button type="button" className="btn sm" onClick={setNow}><Clock3 size={14} aria-hidden /> Now</button>
+        <button type="button" className="btn sm tt-pillbtn" onClick={setNow}><Clock3 size={14} aria-hidden /> Now</button>
       </div>
       <div className="tt-conv">
         <div className="tt-controls">
@@ -226,6 +226,24 @@ export function MeetingPlanner() {
     tableRef.current?.querySelector<HTMLButtonElement>(`button[data-slot="${to}"]`)?.focus();
   };
   const colClass = (i: number) => (i === sel ? " tt-sel" : "") + (best.includes(i) ? " tt-best" : "");
+  // a labelled bracket over each run of best hours (decorative: the header buttons and the count row say the same)
+  const bestWord = n < 2 ? "Working hours" : plan.common ? "Best overlap" : "Most overlap";
+  const bestRow = () => {
+    const out = [];
+    let i = 0;
+    for (const [a, b] of runs(best)) {
+      if (a > i) out.push(<td key={"g" + i} colSpan={a - i} />);
+      const span = b - a + 1;
+      out.push(
+        <td key={"b" + a} colSpan={span} className="tt-bestcell">
+          <span className="tt-bestlab"><Check size={12} />{span >= 3 ? bestWord : span === 2 ? "Best" : ""}</span>
+        </td>,
+      );
+      i = b + 1;
+    }
+    if (i < slots.length) out.push(<td key="end" colSpan={slots.length - i} />);
+    return out;
+  };
 
   return (
     <section className="panel tt-card" aria-labelledby="h-plan">
@@ -239,7 +257,7 @@ export function MeetingPlanner() {
             <span className="label">Date (your time zone)</span>
             <input className="input" type="date" value={date} onChange={(e) => (setDate(e.target.value), setPicked(null))} />
           </label>
-          <button type="button" className="btn" disabled={date === today} onClick={() => (setDate(today), setPicked(null))}>Today</button>
+          <button type="button" className="btn tt-pillbtn" disabled={date === today} onClick={() => (setDate(today), setPicked(null))}>Today</button>
         </div>
       </div>
       <div className="tt-stack">
@@ -261,10 +279,10 @@ export function MeetingPlanner() {
             </p>
 
             <ul className="tt-legend" aria-label="Legend">
-              <li><span className="tt-swatch tt-k-work" aria-hidden><span className="tt-cell-in">9</span></span> Working hours, 09:00–18:00 (bold, solid underline)</li>
-              <li><span className="tt-swatch tt-k-early" aria-hidden><span className="tt-cell-in">7</span></span> Early 07:00–09:00 or late 18:00–22:00 (dotted underline)</li>
+              <li><span className="tt-swatch tt-k-work" aria-hidden><span className="tt-cell-in">9</span></span> Working hours, 09:00–18:00 (bold, underlined)</li>
+              <li><span className="tt-swatch tt-k-early" aria-hidden><span className="tt-cell-in">7</span></span> Early 07:00–09:00 or late 18:00–22:00 (hatched)</li>
               <li><span className="tt-swatch tt-k-night" aria-hidden><span className="tt-cell-in">2<Moon size={9} /></span></span> Night, 22:00–07:00 (moon)</li>
-              <li><span className="tt-swatch tt-best" aria-hidden><span className="tt-hbtn"><Check size={11} /></span></span> {plan.common ? "Everyone in working hours" : "Most zones in working hours"}</li>
+              <li><span className="tt-swatch tt-best" aria-hidden><span className="tt-hbtn"><Check size={11} /></span></span> {plan.common ? "Everyone in working hours" : "Most zones in working hours"} (tick)</li>
             </ul>
 
             <div className="tt-scroll" role="region" aria-label="Hour by hour table, scrolls sideways" tabIndex={0}>
@@ -273,6 +291,12 @@ export function MeetingPlanner() {
                   Local time in each zone for every hour of {longDate(slots[0].start, LOCAL_TZ)}. Choose an hour in the header row to see exact times; arrow keys move between hours.
                 </caption>
                 <thead>
+                  {best.length > 0 && (
+                    <tr className="tt-bestrow" aria-hidden>
+                      <td className="tt-rowhead" />
+                      {bestRow()}
+                    </tr>
+                  )}
                   <tr>
                     <th scope="col" className="tt-rowhead">Your time</th>
                     {slots.map((s, i) => {

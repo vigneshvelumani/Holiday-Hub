@@ -1,0 +1,122 @@
+/* Holiday Hub — visual system v4, "mono + pastel" (loaded after premium.css; wins on tokens).
+   Black chrome, white work surface, soft pastel blocks, pill controls, lime for "today / now".
+   Every ink-on-fill pair below is ≥ 4.5:1. Token NAMES are unchanged from v3; values are new,
+   and the pastel pairs (--p-*) and --btn / --wash are additions. */
+
+:root {
+  /* shape */
+  --radius-xs: 8px;
+  --radius-sm: 14px;
+  --radius: 22px;
+  --radius-lg: 28px;
+  --pill: 999px;
+  --sidebar: 288px;
+  --sidebar-min: 76px;
+
+  /* neutral surfaces (light) */
+  --bg: #f3f2f6;
+  --surface: #ffffff;
+  --surface-2: #f4f3f8;
+  --line: #e8e6ee;
+  --line-strong: #cfccd9;
+  --ink: #0e0e11;
+  --ink-2: #3d3d46;
+  --ink-3: #62626d;
+
+  /* identity */
+  --accent: #5a3fd0; /* links, selected text, focus ring */
+  --accent-ink: #ffffff;
+  --accent-soft: #ece7ff;
+  --btn: #0e0e11; /* primary action: black pill */
+  --btn-ink: #ffffff;
+  --today: #d9f55b; /* today / now: lime fill, always with --today-ink text */
+  --today-ink: #13150a;
+  --today-soft: #f3fbc8;
+  --danger: #c02a1d;
+  --ok: #16703f;
+  --warn: #8f5600;
+
+  /* pastel block pairs: fill + ink (for event blocks, tiles, tags) */
+  --p-lilac: #d6ccff;  --p-lilac-ink: #2a1a73;
+  --p-sage: #cfe5e1;   --p-sage-ink: #0f403a;
+  --p-pink: #ffd3e8;   --p-pink-ink: #6d1243;
+  --p-peach: #ffe1c4;  --p-peach-ink: #6b3207;
+  --p-lime: #e7f7a6;   --p-lime-ink: #353e08;
+  --p-sky: #cfe3ff;    --p-sky-ink: #12366e;
+  --p-grey: #eae9ef;   --p-grey-ink: #34343c;
+
+  /* office Saturdays: working = peach, off = sage (always with icon + words) */
+  --c-worksat: #8a4306;
+  --worksat-soft: #ffe1c4;
+  --c-offsat: #0f5a44;
+  --offsat-soft: #cfe9df;
+  --c-reminder: #8a5a00;
+
+  /* chrome: black rail with slightly lifted panels */
+  --nav-bg: #0a0a0c;
+  --nav-bg-2: #0a0a0c;
+  --nav-panel: #17171a;
+  --nav-panel-2: #212126;
+  --nav-ink: #b9b9c3;
+  --nav-ink-strong: #ffffff;
+  --nav-active: #d6ccff; /* active item: lilac pill with --nav-active-ink text */
+  --nav-active-ink: #14102e;
+  --nav-line: rgba(255, 255, 255, 0.09);
+
+  /* the header wash behind the top of the work area (replaces the photo-like sky in the shell) */
+  --wash: linear-gradient(105deg, #ecf9b0 0%, #f0eaff 42%, #d3e6ff 100%);
+
+  /* elevation: flat cards, soft lift only for things that float */
+  --shadow: none;
+  --shadow-lift: 0 18px 40px -22px rgba(14, 14, 17, 0.28);
+  --shadow-pop: 0 28px 70px -24px rgba(14, 14, 17, 0.42), 0 2px 10px rgba(14, 14, 17, 0.08);
+}
+
+:root[data-theme="dark"] {
+  --bg: #0a0a0c;
+  --surface: #151518;
+  --surface-2: #1e1e23;
+  --line: #2a2a31;
+  --line-strong: #44444e;
+  --ink: #f4f4f6;
+  --ink-2: #cfcfd7;
+  --ink-3: #a2a2ad;
+
+  --accent: #c3b4ff;
+  --accent-ink: #14102e;
+  --accent-soft: #2a2350;
+  --btn: #f4f4f6;
+  --btn-ink: #0e0e11;
+  --today: #d9f55b;
+  --today-ink: #13150a;
+  --today-soft: #2b3210;
+  --danger: #ff9086;
+  --ok: #7fdca6;
+  --warn: #f2bd6b;
+
+  /* pastel blocks stay pastel on black, as in the references */
+  --p-lilac: #cfc4ff;  --p-lilac-ink: #1d1158;
+  --p-sage: #c4dfda;   --p-sage-ink: #0c332e;
+  --p-pink: #ffc9e2;   --p-pink-ink: #5a0d36;
+  --p-peach: #ffd9b5;  --p-peach-ink: #582805;
+  --p-lime: #dff08f;   --p-lime-ink: #2b3306;
+  --p-sky: #c4dbff;    --p-sky-ink: #0e2c5c;
+  --p-grey: #2a2a31;   --p-grey-ink: #e6e6ec;
+
+  --c-worksat: #ffc48f;
+  --worksat-soft: #3b2611;
+  --c-offsat: #8fe0c0;
+  --offsat-soft: #12302a;
+  --c-reminder: #f2bd6b;
+
+  --nav-bg: #050506;
+  --nav-bg-2: #050506;
+  --nav-panel: #121214;
+  --nav-panel-2: #1b1b1f;
+
+  --wash: linear-gradient(105deg, #262d0c 0%, #1d183a 45%, #0f1d33 100%);
+
+  --shadow: none;
+  --shadow-lift: 0 18px 40px -22px rgba(0, 0, 0, 0.9);
+  --shadow-pop: 0 28px 70px -24px rgba(0, 0, 0, 0.95);
+}

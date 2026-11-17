@@ -190,39 +190,39 @@ export function AstrologyPage() {
       </section>
 
       {p && (
-        <div className="as-grid two">
+        <>
           {/* ── the five limbs ── */}
-          <section className="panel" aria-labelledby="h-limbs">
+          <section className="as-block as-gap" aria-labelledby="h-limbs">
             <div className="panel-head">
               <h2 id="h-limbs">The five limbs</h2>
               <span className="as-head-note">Pancha-anga · as at sunrise{p.sunrise ? `, ${t(p.sunrise)}` : ""}</span>
             </div>
             <ol className="as-limbs">
-              <li>
+              <li className="t-lilac">
                 <div className="term">Tithi<span>lunar day</span></div>
                 <div className="val">{p.tithi.paksha} {p.tithi.name}<span>{ORD(p.tithi.number)} of 15 in the {waxing ? "waxing" : "waning"} fortnight</span></div>
                 <div className="end"><span className="num">until {t(p.tithi.endsAt, true)}</span>{until(p.tithi.endsAt) && <span className="left num">{until(p.tithi.endsAt)}</span>}</div>
                 <p className="mean">One of thirty lunar days: each lasts while the Moon gains 12° on the Sun.</p>
               </li>
-              <li>
+              <li className="t-sky">
                 <div className="term">Nakshatra<span>lunar mansion</span></div>
                 <div className="val">{p.nakshatra.name}<span>{p.nakshatra.tamil} in Tamil</span></div>
                 <div className="end"><span className="num">until {t(p.nakshatra.endsAt, true)}</span>{until(p.nakshatra.endsAt) && <span className="left num">{until(p.nakshatra.endsAt)}</span>}</div>
                 <p className="mean">Which of the 27 star-segments of the sky (13°20′ each) the Moon is passing through.</p>
               </li>
-              <li>
+              <li className="t-sage">
                 <div className="term">Yoga<span>Sun–Moon sum</span></div>
                 <div className="val">{p.yoga.name}</div>
                 <div className="end"><span className="num">until {t(p.yoga.endsAt, true)}</span>{until(p.yoga.endsAt) && <span className="left num">{until(p.yoga.endsAt)}</span>}</div>
                 <p className="mean">One of 27 divisions of the Sun's and Moon's longitudes added together.</p>
               </li>
-              <li>
+              <li className="t-peach">
                 <div className="term">Karana<span>half a tithi</span></div>
                 <div className="val">{p.karana.name}</div>
                 <div className="end"><span className="num">until {t(p.karana.endsAt, true)}</span>{until(p.karana.endsAt) && <span className="left num">{until(p.karana.endsAt)}</span>}</div>
                 <p className="mean">Half of a lunar day: it lasts while the Moon gains 6° on the Sun.</p>
               </li>
-              <li>
+              <li className="t-pink">
                 <div className="term">Vara<span>weekday</span></div>
                 <div className="val">{VARA[p.weekday]}<span>{WEEKDAYS[p.weekday]}</span></div>
                 <div className="end"><span>sunrise to sunrise</span></div>
@@ -232,7 +232,7 @@ export function AstrologyPage() {
           </section>
 
           {/* ── calendar reckoning ── */}
-          <section className="panel" aria-labelledby="h-reckon">
+          <section className="panel as-gap" aria-labelledby="h-reckon">
             <div className="panel-head">
               <h2 id="h-reckon">Calendar &amp; signs</h2>
               <span className="as-head-note">sidereal zodiac · Lahiri ayanamsa</span>
@@ -260,7 +260,7 @@ export function AstrologyPage() {
               </div>
             </dl>
           </section>
-        </div>
+        </>
       )}
 
       {/* ── the day's timings ── */}
@@ -295,7 +295,7 @@ export function AstrologyPage() {
                     {p.abhijit && (
                       <div className="as-fav" style={{ left: `${pct(p.abhijit[0])}%`, width: `${pct(p.abhijit[1]) - pct(p.abhijit[0])}%` }} title={`Abhijit: ${span(p.abhijit)}`}>
                         <span className="as-band abhi" />
-                        <span className="as-fav-label">Abhijit · favourable</span>
+                        <span className="as-fav-label"><Check size={13} strokeWidth={3} aria-hidden /> Abhijit · favourable</span>
                       </div>
                     )}
                   </div>
@@ -316,7 +316,7 @@ export function AstrologyPage() {
               </div>
               <ul className="as-periods" aria-label="Exact times">
                 {PERIODS.map((x) => (
-                  <li key={x.key}>
+                  <li key={x.key} className={x.cls}>
                     <span className={`as-swatch as-band ${x.cls}`} aria-hidden>{x.code}</span>
                     <span className="name">{x.label}<small>{x.note}</small></span>
                     <span className="time num">{span(p[x.key])}{periodState(p[x.key]) && <small>{periodState(p[x.key])}</small>}</span>
@@ -385,7 +385,7 @@ export function AstrologyPage() {
                         <td>{rashi}<small>{en.join(" ").replace(/[()]/g, "")}</small></td>
                         <td className="num r">{Math.floor(pl.degreeInSign)}° {String(Math.floor((pl.degreeInSign % 1) * 60)).padStart(2, "0")}′</td>
                         <td>{pl.nakshatra || "—"}</td>
-                        <td>{pl.retrograde ? <span className="retro">Retrograde</span> : "Direct"}</td>
+                        <td><span className={"as-motion" + (pl.retrograde ? " retro" : "")}>{pl.retrograde ? "Retrograde" : "Direct"}</span></td>
                       </tr>
                     );
                   })}
@@ -405,7 +405,7 @@ export function AstrologyPage() {
               {calc.obs.map((o) => (
                 <li key={o.dateKey + o.name}>
                   <button type="button" onClick={() => ui.openDay(parseYmd(o.dateKey))}>
-                    <span className="d"><span className="num">{fmt(parseYmd(o.dateKey), { day: "numeric", month: "short" })}</span><small>{fmt(parseYmd(o.dateKey), { weekday: "short" })}</small></span>
+                    <span className="d"><span className="num">{fmt(parseYmd(o.dateKey), { day: "numeric" })}</span><small>{fmt(parseYmd(o.dateKey), { month: "short" })} · {fmt(parseYmd(o.dateKey), { weekday: "short" })}</small></span>
                     <span className="b"><span className="t">{o.name}</span><small>{o.detail}</small></span>
                   </button>
                 </li>
@@ -420,7 +420,7 @@ export function AstrologyPage() {
               {festivals.map((f) => (
                 <li key={f.id}>
                   <button type="button" onClick={() => ui.openDay(parseYmd(f.date))}>
-                    <span className="d"><span className="num">{fmt(parseYmd(f.date), { day: "numeric", month: "short" })}</span><small className="num">{f.date.slice(0, 4)}</small></span>
+                    <span className="d"><span className="num">{fmt(parseYmd(f.date), { day: "numeric" })}</span><small className="num">{fmt(parseYmd(f.date), { month: "short" })} {f.date.slice(0, 4)}</small></span>
                     <span className="b"><span className="t">{f.name}</span><small>{regionsOf(f)} · {relDays(parseYmd(f.date))}</small></span>
                   </button>
                 </li>
@@ -443,6 +443,7 @@ export function AstrologyPage() {
             <p className="as-horo-sub">A sun-sign forecast for today, fetched from an external horoscope service. It is separate from the almanac above and is for entertainment, not a verified prediction.</p>
           </div>
         </div>
+        <div className="as-horo-body">
         <div className="as-signs" role="group" aria-label="Zodiac sign">
           {ZODIAC.map((z, i) => (
             <button key={z} type="button" aria-pressed={s.zodiac === z} onClick={() => pickSign(z)}>
@@ -474,6 +475,7 @@ export function AstrologyPage() {
               <p className="as-horo-foot">A new reading is fetched every day. Horoscopes are for entertainment, not verified predictions.</p>
             </article>
           )}
+        </div>
         </div>
       </section>
     </div>
