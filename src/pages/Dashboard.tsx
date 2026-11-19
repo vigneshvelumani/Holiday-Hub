@@ -6,7 +6,7 @@ import { addDays, addMonths, dayDiff, fmt, fmtMonthYear, fmtTime, parseYmd, relD
 import { fmtInZone, panchangam, sunTimes } from "../lib/astro.ts";
 import { LOCAL_TZ, diffLabel, fmtZone, useNow, zoneParts } from "../lib/clock.ts";
 import { regionsOf } from "../lib/holidays.ts";
-import { itemsBetween, itemsOn, nextSalary, toggleReminder, toggleTask, type DayItem } from "../lib/items.ts";
+import { itemsBetween, itemsOn, nextSalary, openReminderRows, openTaskRows, reminderItem, taskItem, taskRows, toggleReminder, toggleTask, type DayItem } from "../lib/items.ts";
 import { placeCity, placeRest } from "../lib/location.ts";
 import { toast } from "../lib/notify.ts";
 import { SATURDAY_LABEL, nextOfficeSaturday, officeSaturday } from "../lib/saturday.ts";
@@ -399,7 +399,7 @@ function NewsCard() {
   const { data, loading, error, updatedAt, refresh } = useNews(cat.id, cat.feeds);
   const [badLead, setBadLead] = useState<string | null>(null);
   const lead = data?.find((n) => n.image && n.id !== badLead) || data?.[0];
-  const rest = (data || []).filter((n) => n !== lead).slice(0, 2);
+  const rest = (data || []).filter((n) => n !== lead).slice(0, 4);
   return (
     <section className="panel" aria-labelledby="h-news">
       <h2 id="h-news" className="sr">News</h2>
@@ -453,7 +453,7 @@ function Extras() {
   const h = useHoroscope(s.widgets.zodiac ? s.zodiac : null, ymd(today()));
   const pay = nextSalary(s.salaryDay);
   const days = dayDiff(today(), pay);
-  const done = tasks.filter((t) => (t.recurrence.freq === "none" ? t.status === "done" : t.doneDates.length > 0)).length;
+  const done = taskRows(tasks).filter((r) => r.done).length; // the same rows as the Tasks page
   const pct = tasks.length ? Math.round((done / tasks.length) * 100) : 0;
   const written = notes.filter((n) => n.content.trim()).length;
   if (!s.widgets.salary && !s.widgets.stats && !s.widgets.zodiac) return null;
@@ -503,8 +503,9 @@ export function Dashboard() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const ahead = useMemo(() => itemsBetween(addDays(now, 1), 90, data, s).flatMap((d) => d.items), [data, s, ymd(now)]);
   const all = [...todays, ...ahead];
-  const upTasks = all.filter((i) => i.task && !i.done).slice(0, 5);
-  const upRem = all.filter((i) => i.reminder && !i.done).slice(0, 5);
+  // Tasks and Reminders tabs: the same rows as their pages — one per item, overdue first — whatever the calendar layers show
+  const upTasks = openTaskRows(data.tasks, now).slice(0, 5).map((r) => taskItem(r.t, r.date));
+  const upRem = openReminderRows(data.reminders).slice(0, 5).map((x) => reminderItem(x.r, x.date));
   const upHol = all.filter((i) => i.holiday && i.holiday.kind !== "bank" && i.holiday.kind !== "observance").slice(0, 4);
   const w = s.widgets;
   const onMonth = month.getMonth() === now.getMonth() && month.getFullYear() === now.getFullYear();
@@ -520,7 +521,15 @@ export function Dashboard() {
       <Hello />
       <WeekStrip data={data} s={s} weather={wmap} />
 
-      <div className="dash-a">
+      {/* today: what's on, the weather, and the two fixed office Saturdays */}
+      <div className="dz dz-today">
+        <Schedule todays={todays} upTasks={upTasks} upRem={upRem} />
+        {w.weather !== false && <WeatherCard />}
+        <div className="dz-sats"><SaturdayCards /></div>
+      </div>
+
+      {/* the month, with the holidays coming up beside it */}
+      <div className="dz dz-month">
         <section className="panel cal-card a-cal" aria-labelledby="h-cal">
           <div className="cal-bar">
             <h2 id="h-cal" className="tick" key={ymd(month).slice(0, 7)} aria-live="polite">{fmtMonthYear(month)}</h2>
@@ -540,11 +549,8 @@ export function Dashboard() {
           </div>
         </section>
 
-        {w.weather !== false && <WeatherCard />}
-
-        <div className="a-side">
-          <SaturdayCards />
-          <section className="panel" aria-labelledby="h-hol" style={{ flex: 1 }}>
+          <div className="dz-side">
+          <section className="panel dz-hol" aria-labelledby="h-hol">
             <div className="panel-head">
               <h2 id="h-hol"><span className="ph-ico pink" aria-hidden><Flag size={16} /></span>Upcoming holidays</h2>
               <button className="link" onClick={() => ui.go("holidays")}>View all <ArrowRight size={14} /></button>
@@ -567,17 +573,21 @@ export function Dashboard() {
               </ul>
             )}
           </section>
+          <Extras />
+          </div>
+      </div>
+
+      {(w.worldclock || w.panchangam || w.news) && (
+        <div className="dz dz-more">
+          {w.news && <NewsCard />}
+          {(w.worldclock || w.panchangam) && (
+            <div className="dz-stack">
+              {w.worldclock && <WorldTrio />}
+              {w.panchangam && <PanchangamCard />}
+            </div>
+          )}
         </div>
-      </div>
-
-      <div className="dash-b">
-        <Schedule todays={todays} upTasks={upTasks} upRem={upRem} />
-        {w.worldclock && <WorldTrio />}
-        {w.panchangam && <PanchangamCard />}
-        {w.news && <NewsCard />}
-      </div>
-
-      <Extras />
+      )}
     </div>
   );
 }

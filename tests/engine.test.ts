@@ -226,5 +226,95 @@ if (fail) process.exit(1);
   console.log(`time tools: ${p3} checks passed`);
 }
 
+// ── task / reminder rows, date search, drag-to-move, reopen ──
+{
+  const { taskRow, taskRows, openTaskRows, reminderRow, parseDateQuery, moveItem, taskItem, reminderItem, toggledTask, newTask, newReminder } = await import("../src/lib/items.ts");
+  const { prevOccurrence, describeRecurrence } = await import("../src/lib/recurrence.ts");
+  let p4 = 0;
+  const ok = (label: string, cond: boolean) => (cond ? p4++ : (console.log("FAIL " + label), process.exitCode = 1));
+  const now = parseYmd("2026-11-18"); // a Wednesday
+  const at = (hhmm: string) => new Date(2026, 10, 18, +hhmm.slice(0, 2), +hhmm.slice(3));
+  const daily = (patch = {}) => newTask("2026-11-17", { id: "d", title: "Daily", recurrence: { freq: "daily" }, ...patch });
+
+  ok("prevOccurrence: weekly, last Monday", ymd(prevOccurrence({ freq: "weekly" }, "2026-11-02", now)!) === "2026-11-16");
+  ok("prevOccurrence: not started yet", prevOccurrence({ freq: "daily" }, "2026-11-20", now) === null);
+  ok("prevOccurrence: stops at the end date", ymd(prevOccurrence({ freq: "daily", until: "2026-11-10" }, "2026-11-01", now)!) === "2026-11-10");
+  ok("repeat summary formats its end date", !describeRecurrence({ freq: "daily", until: "2026-11-18" }).includes("2026-11-18") && describeRecurrence({ freq: "daily", until: "2026-11-18" }).includes("2026"));
+
+  // a finished repeating series (17–18 Nov, both ticked) is done, on its last date — not "Overdue" on its first
+  const ended = daily({ recurrence: { freq: "daily", until: "2026-11-18" }, doneDates: ["2026-11-17", "2026-11-18"] });
+  const endedRow = taskRow(ended, now);
+  ok("finished series is done", endedRow.done && !endedRow.overdue && endedRow.date === "2026-11-18");
+  ok("…reopening it reopens the last occurrence", JSON.stringify(toggledTask(ended, endedRow.date).doneDates) === '["2026-11-17"]');
+  const half = taskRow(daily({ recurrence: { freq: "daily", until: "2026-11-18" }, doneDates: ["2026-11-17"] }), now);
+  ok("series with today's occurrence open is not done", !half.done && half.date === "2026-11-18" && !half.overdue && half.missed === 0);
+  const lapsed = taskRow(daily({ recurrence: { freq: "daily", until: "2026-11-17" } }), now);
+  ok("ended series never ticked is overdue on its last date", !lapsed.done && lapsed.overdue && lapsed.date === "2026-11-17");
+
+  // a daily task started 8 days ago: one row, on today, with the earlier misses counted
+  const old = daily({ dueDate: "2026-11-10", startDate: "2026-11-10" });
+  const oldRow = taskRow(old, now);
+  ok("daily task shows today's occurrence", oldRow.date === "2026-11-18" && !oldRow.overdue && !oldRow.done);
+  ok("…and counts the 8 earlier missed", oldRow.missed === 8);
+  const ticked = taskRow(toggledTask(old, oldRow.date), now);
+  ok("…one tick moves it to tomorrow, old days do not resurface", ticked.date === "2026-11-19" && ticked.missed === 0 && !ticked.done);
+  const weekly = taskRow(newTask("2026-11-02", { recurrence: { freq: "weekly" } }), now);
+  ok("weekly task missed on Monday is overdue on Monday", weekly.date === "2026-11-16" && weekly.overdue && weekly.missed === 2);
+  ok("series that starts later shows its first date", taskRow(newTask("2026-11-25", { recurrence: { freq: "weekly" } }), now).date === "2026-11-25");
+
+  const overdue = newTask("2026-11-10", { id: "o", title: "Late", priority: "low" });
+  const finished = newTask("2026-11-12", { id: "f", status: "done" });
+  const later = newTask("2026-11-30", { id: "l" });
+  const list = [later, old, finished, overdue, ended];
+  ok("one row per task", taskRows(list, now).length === 5 && taskRows(list, now).filter((r) => r.t.id === "d").length === 2);
+  ok("overdue one-off task is listed as overdue", taskRow(overdue, now).overdue && taskRow(overdue, now).date === "2026-11-10");
+  ok("open rows: overdue first, each task once", JSON.stringify(openTaskRows(list, now).map((r) => r.t.id)) === '["o","d","l"]');
+  ok("done count agrees (one-off done + finished series)", taskRows(list, now).filter((r) => r.done).length === 2);
+
+  // reminders: same rules, plus past occurrences that already notified are skipped
+  const rem = newReminder("2026-11-10", { id: "r", time: "09:00", recurrence: { freq: "daily" } });
+  const r1 = reminderRow(rem, at("10:00"));
+  ok("daily reminder shows today's occurrence", r1.date === "2026-11-18" && r1.overdue && r1.missed === 8);
+  const r2 = reminderRow({ ...rem, fired: ["2026-11-18"] }, at("10:00"));
+  ok("…once it has notified, the next one is listed", r2.date === "2026-11-19" && !r2.overdue && r2.missed === 0);
+  const r3 = reminderRow({ ...rem, recurrence: { freq: "daily", until: "2026-11-18" }, doneDates: ["2026-11-18"] }, at("10:00"));
+  ok("finished reminder series is done", r3.done && !r3.overdue && r3.date === "2026-11-18");
+
+  // dates without a year
+  const q = (s: string) => {
+    const d = parseDateQuery(s, now);
+    return d ? ymd(d) : null;
+  };
+  ok('"25 dec"', q("25 dec") === "2026-12-25");
+  ok('"dec 25"', q("dec 25") === "2026-12-25");
+  ok('"25 December"', q("25 December") === "2026-12-25");
+  ok('"25th dec"', q("25th dec") === "2026-12-25");
+  ok('"december"', q("december") === "2026-12-01");
+  ok('"dec"', q("dec") === "2026-12-01");
+  ok('"november" is the month in progress', q("november") === "2026-11-01");
+  ok('"18 nov" is today', q("18 nov") === "2026-11-18");
+  ok('"17 nov" has passed → next year', q("17 nov") === "2027-11-17");
+  ok('"march" → next year', q("march") === "2027-03-01");
+  ok('"29 feb" → next leap year', q("29 feb") === "2028-02-29");
+  ok("not a date", q("31 feb") === null && q("decor") === null && q("report") === null && q("12 monkeys") === null);
+  ok("full forms still work", q("2027-03-14") === "2027-03-14" && q("14 Mar 2027") === "2027-03-14" && q("March 14, 2027") === "2027-03-14" && q("March 2030") === "2030-03-01" && q("2031") === "2031-01-01" && q("14/03/2027") === "2027-03-14");
+
+  // dragging: a repeating item is refused and left untouched
+  const series = daily({ doneDates: ["2026-11-17"] });
+  const before = JSON.stringify(series);
+  ok("moveItem refuses a repeating task", moveItem(taskItem(series, "2026-11-18"), "2026-11-20") === false && JSON.stringify(series) === before);
+  ok("moveItem refuses a repeating reminder", moveItem(reminderItem({ ...rem, fired: ["2026-11-17"] }, "2026-11-18"), "2026-11-20") === false);
+  ok("moveItem ignores a drop on the same day", moveItem(taskItem(overdue, "2026-11-10"), "2026-11-10") === false);
+
+  // reopening puts "In progress" back
+  const doing = newTask("2026-11-18", { status: "in_progress" });
+  const closed = toggledTask(doing, "2026-11-18");
+  ok("completing sets done", closed.status === "done" && typeof closed.completedAt === "number");
+  ok("reopening restores In progress", toggledTask(closed, "2026-11-18").status === "in_progress" && toggledTask(closed, "2026-11-18").completedAt === undefined);
+  ok("reopening a plain task gives To do", toggledTask(toggledTask(newTask("2026-11-18"), "2026-11-18"), "2026-11-18").status === "todo");
+  ok("reopening a task completed before this was remembered gives To do", toggledTask(newTask("2026-11-18", { status: "done" }), "2026-11-18").status === "todo");
+  console.log(`items: ${p4} checks passed`);
+}
+
 // the app modules open a BroadcastChannel, which would keep Node alive
 process.exit(process.exitCode || 0);

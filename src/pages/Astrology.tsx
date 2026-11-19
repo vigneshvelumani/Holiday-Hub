@@ -1,9 +1,10 @@
 import "./astrology.css";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronLeft, ChevronRight, ExternalLink, Moon, Sunrise, Sunset } from "lucide-react";
-import { addDays, fmt, fmtLong, isValidYmd, parseYmd, relDays, today, ymd, WEEKDAYS } from "../lib/dates.ts";
+import { addDays, fmt, fmtLong, isValidYmd, parseYmd, ymd, WEEKDAYS } from "../lib/dates.ts";
 import { fmtInZone, lunarObservances, moonEvents, panchangam, planetPositions } from "../lib/astro.ts";
 import { useNow } from "../lib/clock.ts";
+import { keyDayDiff, placeToday, relPlaceDays } from "../lib/placeDate.ts";
 import { holidaysForYear, regionsOf } from "../lib/holidays.ts";
 import { ZODIAC, ZODIAC_DATES, useHoroscope } from "../lib/services.ts";
 import { updateSettings, useSettings } from "../lib/store.ts";
@@ -47,7 +48,11 @@ export function AstrologyPage() {
   const ui = useUi();
   const s = useSettings();
   const now = useNow(60000);
-  const [date, setDateRaw] = useState(ymd(today()));
+  const tz = s.location.tz;
+  // One rule for the whole page: "today" is today's date at the chosen location. Everything here is
+  // calculated for that place, so a device in another time zone must not move the day.
+  const todayKey = placeToday(tz, now);
+  const [date, setDateRaw] = useState(todayKey);
   // what is typed in the date field; it only becomes the date once it is a real day inside the range,
   // so typing a year digit by digit never jumps the almanac to the year 2 or 20
   const [draft, setDraft] = useState(date);
@@ -56,8 +61,17 @@ export function AstrologyPage() {
     setDateRaw(k);
     setDraft(k);
   };
+  // while the page is showing today it stays on today — past midnight there, or when the location changes
+  const lastToday = useRef(todayKey);
+  useEffect(() => {
+    if (lastToday.current === todayKey) return;
+    if (date === lastToday.current) setDate(todayKey);
+    lastToday.current = todayKey;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [todayKey]);
   const reading = useRef<HTMLDivElement>(null);
-  const tz = s.location.tz;
+  /** For an instant: its calendar date at the location, relative to today there. */
+  const relAt = (at: Date) => relPlaceDays(placeToday(tz, at), todayKey);
   const t = (d: Date | null | undefined, day = false) => fmtInZone(d, tz, s.hour12, day);
   const span = (r: [Date, Date] | null) => (r ? `${t(r[0])} – ${t(r[1])}` : "—");
   const calc = useMemo(() => {
@@ -73,10 +87,10 @@ export function AstrologyPage() {
     const y = Number(date.slice(0, 4));
     return [...holidaysForYear(y), ...holidaysForYear(y + 1)].filter((h) => h.date >= date && (h.kind === "festival" || (h.kind === "public" && !!h.note))).slice(0, 14);
   }, [date]);
-  const h = useHoroscope(s.zodiac, ymd(today()));
+  const h = useHoroscope(s.zodiac, todayKey);
   const { p } = calc;
   const d = parseYmd(date);
-  const isToday = date === ymd(today());
+  const isToday = date === todayKey;
   const place = s.location.name.split(",")[0];
   const dayLen = p?.sunrise && p.sunset ? p.sunset.getTime() - p.sunrise.getTime() : 0;
   const pct = (x: Date) => (p?.sunrise && dayLen > 0 ? ((x.getTime() - p.sunrise.getTime()) / dayLen) * 100 : 0);
@@ -86,9 +100,9 @@ export function AstrologyPage() {
     const m = Math.max(0, Math.round(ms / 60000));
     return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`;
   };
-  const relFar = (x: Date) => {
-    const days = Math.round((x.getTime() - today().getTime()) / 86400000);
-    if (Math.abs(days) <= 400) return relDays(x);
+  const relFar = (k: string) => {
+    const days = keyDayDiff(todayKey, k);
+    if (Math.abs(days) <= 400) return relPlaceDays(k, todayKey);
     const y = Math.round(Math.abs(days) / 365.25);
     return days < 0 ? `about ${y} year${y === 1 ? "" : "s"} ago` : `in about ${y} year${y === 1 ? "" : "s"}`;
   };
@@ -148,7 +162,7 @@ export function AstrologyPage() {
               title="Any date from 1900 to 2100"
             />
             <button type="button" className="as-hbtn" aria-label="Next day" title="Next day" disabled={date >= MAX_DATE} onClick={() => setDate(ymd(addDays(d, 1)))}><ChevronRight size={18} /></button>
-            <button type="button" className="as-hbtn text" onClick={() => setDate(ymd(today()))} disabled={isToday} aria-label={isToday ? "Today (showing today)" : "Go to today"}>Today</button>
+            <button type="button" className="as-hbtn text" onClick={() => setDate(todayKey)} disabled={isToday} aria-label={isToday ? "Today (showing today)" : "Go to today"}>Today</button>
           </div>
           <LocationChip light onOpen={ui.openLocation} />
         </div>
@@ -157,7 +171,7 @@ export function AstrologyPage() {
           <div className="as-hero-main">
             <div className="as-hero-moon"><MoonDisc elongation={p.moon.elongation} size={176} dark /></div>
             <div className="as-hero-text">
-              <p className="as-hero-date">{fmtLong(d)} <span>· {relFar(d)}</span></p>
+              <p className="as-hero-date">{fmtLong(d)} <span>· {relFar(date)}</span></p>
               <h2 className="as-hero-phase">{p.moon.phaseName}</h2>
               <p className="as-hero-lit"><span className="num">{(p.moon.illumination * 100).toFixed(0)}%</span> illuminated · {waxing ? "waxing" : "waning"}</p>
               <dl className="as-hero-facts">
@@ -175,12 +189,12 @@ export function AstrologyPage() {
               <div>
                 <dt><MoonDisc elongation={0} size={22} dark /> Next new moon</dt>
                 <dd className="num">{nextNew ? t(nextNew.at, true) : "—"}</dd>
-                {nextNew && <dd className="sub">{relDays(new Date(nextNew.at))} · Amavasya</dd>}
+                {nextNew && <dd className="sub">{relAt(new Date(nextNew.at))} · Amavasya</dd>}
               </div>
               <div>
                 <dt><MoonDisc elongation={180} size={22} dark /> Next full moon</dt>
                 <dd className="num">{nextFull ? t(nextFull.at, true) : "—"}</dd>
-                {nextFull && <dd className="sub">{relDays(new Date(nextFull.at))} · Purnima</dd>}
+                {nextFull && <dd className="sub">{relAt(new Date(nextFull.at))} · Purnima</dd>}
               </div>
             </dl>
           </div>
@@ -337,7 +351,7 @@ export function AstrologyPage() {
             <h2 id="h-cycle">This lunar month</h2>
             <span className="as-head-note">{p.lunarMonth} · new moon to new moon · select a day</span>
           </div>
-          <LunarCycle dateKey={date} place={s.location} onPick={setDate} />
+          <LunarCycle dateKey={date} place={s.location} todayKey={todayKey} onPick={setDate} />
           {calc.moons.length > 0 && (
             <>
               <h3 className="as-sub">Upcoming phases</h3>
@@ -349,7 +363,7 @@ export function AstrologyPage() {
                       <span>
                         <span className="n">{m.name}</span>
                         <span className="w num">{t(m.at, true)}</span>
-                        <span className="r">{relDays(new Date(m.at))}</span>
+                        <span className="r">{relAt(new Date(m.at))}</span>
                       </span>
                     </button>
                   </li>
@@ -421,7 +435,7 @@ export function AstrologyPage() {
                 <li key={f.id}>
                   <button type="button" onClick={() => ui.openDay(parseYmd(f.date))}>
                     <span className="d"><span className="num">{fmt(parseYmd(f.date), { day: "numeric" })}</span><small className="num">{fmt(parseYmd(f.date), { month: "short" })} {f.date.slice(0, 4)}</small></span>
-                    <span className="b"><span className="t">{f.name}</span><small>{regionsOf(f)} · {relDays(parseYmd(f.date))}</small></span>
+                    <span className="b"><span className="t">{f.name}</span><small>{regionsOf(f)} · {relPlaceDays(f.date, todayKey)}</small></span>
                   </button>
                 </li>
               ))}
@@ -462,7 +476,7 @@ export function AstrologyPage() {
           {s.zodiac && h.error && <ErrorNote message={`Today's forecast for ${s.zodiac} couldn't be loaded: ${h.error.replace(/[.\s]+$/, "")}.`} onRetry={h.refresh} stale={h.stale} />}
           {s.zodiac && h.data && (
             <article key={s.zodiac}>
-              <p className="eyebrow">{s.zodiac} · {fmt(today(), { weekday: "long", day: "numeric", month: "long" })}{h.loading ? " · refreshing…" : ""}</p>
+              <p className="eyebrow">{s.zodiac} · {fmt(parseYmd(todayKey), { weekday: "long", day: "numeric", month: "long" })}{h.loading ? " · refreshing…" : ""}</p>
               <p className="as-overall">{h.data.overall}</p>
               {(h.data.love || h.data.career || h.data.health || h.data.lucky_number || h.data.lucky_color) && (
                 <dl className="as-aspects">

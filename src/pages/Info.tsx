@@ -1,9 +1,10 @@
 import "./settings.css";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { BellRing, LayoutDashboard, MapPin, Palette, ShieldCheck, SlidersHorizontal, Tags, X, type LucideIcon } from "lucide-react";
+import { BellRing, Download, LayoutDashboard, MapPin, Palette, ShieldCheck, SlidersHorizontal, Tags, Upload, X, type LucideIcon } from "lucide-react";
 import { LOCAL_TZ, hereName, tzLabel } from "../lib/clock.ts";
-import { notificationPermission, notify, requestNotificationPermission } from "../lib/notify.ts";
-import { TASK_CATEGORIES, updateSettings, useSettings, type Settings, type ViewName } from "../lib/store.ts";
+import { today, ymd } from "../lib/dates.ts";
+import { notificationPermission, notify, requestNotificationPermission, toast } from "../lib/notify.ts";
+import { TASK_CATEGORIES, applyBackup, clearAllData, exportData, parseBackup, resetSettings, updateSettings, useData, useSettings, type Backup, type Settings, type StoreName, type ViewName } from "../lib/store.ts";
 import { Seg, Switch, useUi } from "../components/ui.tsx";
 
 export { NewsPage } from "./News.tsx";
@@ -88,6 +89,118 @@ function Row({ title, desc, children }: { title: string; desc: ReactNode; childr
       </div>
       <div className="st-row-ctl">{children}</div>
     </div>
+  );
+}
+
+/**
+ * A destructive action in two steps, in place: the first press only asks; the answer is given
+ * right here, with Cancel focused. Escape cancels.
+ */
+function ConfirmAction({ label, warning, confirmLabel, onConfirm }: { label: string; warning: string; confirmLabel: string; onConfirm: () => void }) {
+  const [asking, setAsking] = useState(false);
+  const opener = useRef<HTMLButtonElement>(null);
+  const cancel = useRef<HTMLButtonElement>(null);
+  const wasAsking = useRef(false);
+  useEffect(() => {
+    if (asking) cancel.current?.focus();
+    else if (wasAsking.current) opener.current?.focus();
+    wasAsking.current = asking;
+  }, [asking]);
+  if (!asking) return <button type="button" className="btn st-warn" ref={opener} onClick={() => setAsking(true)}>{label}</button>;
+  return (
+    <span className="st-confirm" role="group" aria-label={`Confirm: ${label}`} onKeyDown={(e) => e.key === "Escape" && (e.stopPropagation(), setAsking(false))}>
+      <span className="st-confirm-text" role="alert">{warning}</span>
+      <button type="button" className="btn" ref={cancel} onClick={() => setAsking(false)}>Cancel</button>
+      <button type="button" className="btn danger st-danger" onClick={() => (setAsking(false), onConfirm())}>{confirmLabel}</button>
+    </span>
+  );
+}
+
+const DATA_LABEL: [StoreName, string, string][] = [
+  ["tasks", "task", "tasks"], ["reminders", "reminder", "reminders"], ["events", "event", "events"], ["notes", "note", "notes"],
+  ["moods", "mood", "moods"], ["birthdays", "birthday", "birthdays"], ["notifications", "notification", "notifications"], ["bookmarks", "saved article", "saved articles"],
+];
+/** "3 tasks, 1 reminder and 2 notes" — only what is actually there. */
+function countText(counts: Record<StoreName, number>): string {
+  const parts = DATA_LABEL.filter(([k]) => counts[k] > 0).map(([k, one, many]) => `${counts[k]} ${counts[k] === 1 ? one : many}`);
+  return parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}` : parts[0] || "";
+}
+const MAX_BACKUP_BYTES = 20 * 1024 * 1024;
+
+/** Backup, restore and erase — all of it inside this browser; no file or value leaves the device. */
+function DataRows() {
+  const data = useData();
+  const picker = useRef<HTMLInputElement>(null);
+  const [error, setError] = useState("");
+  const [pending, setPending] = useState<{ name: string; backup: Backup } | null>(null);
+  const counts = Object.fromEntries(DATA_LABEL.map(([k]) => [k, data[k].length])) as Record<StoreName, number>;
+  const have = countText(counts);
+
+  const exportBackup = () => {
+    const name = `holiday-hub-backup-${ymd(today())}.json`;
+    const url = URL.createObjectURL(new Blob([exportData()], { type: "application/json" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    toast("Backup saved to your downloads", name, "ok");
+  };
+  const choose = async (file: File | undefined) => {
+    setError("");
+    setPending(null);
+    if (!file) return;
+    try {
+      if (file.size > MAX_BACKUP_BYTES) throw new Error("This file is too large to be a Holiday Hub backup.");
+      setPending({ name: file.name, backup: parseBackup(await file.text()) });
+    } catch (e) {
+      setError((e as Error).message || "This file couldn't be read.");
+    }
+  };
+  const restore = () => {
+    if (!pending) return;
+    applyBackup(pending.backup);
+    toast("Backup restored", pending.name, "ok");
+    setPending(null);
+  };
+  const inFile = pending ? [countText(pending.backup.counts), pending.backup.settings ? "your settings" : ""].filter(Boolean).join(", plus ") || "no records" : "";
+  const exported = pending?.backup.exportedAt ? new Date(pending.backup.exportedAt).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "";
+
+  return (
+    <>
+      <Row title="Export backup" desc="Downloads everything you have added, and your settings, as one file on this device. Nothing is uploaded.">
+        <button type="button" className="btn" onClick={exportBackup}><Download size={14} aria-hidden /> Export backup</button>
+      </Row>
+      <Row
+        title="Import backup"
+        desc={
+          <>
+            Restores from a file exported here. The file is checked before anything changes; what it contains then replaces what is in this browser.
+            {error && <span className="st-msg err" role="alert">{error} Nothing was changed.</span>}
+            {pending && <span className="st-msg" role="status">{pending.name}{exported ? ` (exported ${exported})` : ""} contains {inFile}.</span>}
+          </>
+        }
+      >
+        <input ref={picker} type="file" accept="application/json,.json" hidden aria-label="Backup file" onChange={(e) => (void choose(e.target.files?.[0]), (e.target.value = ""))} />
+        {pending ? (
+          <span className="st-confirm" role="group" aria-label="Confirm: Import backup">
+            <span className="st-confirm-text">Replacing can't be undone.</span>
+            <button type="button" className="btn" onClick={() => setPending(null)}>Cancel</button>
+            <button type="button" className="btn danger st-danger" onClick={restore}>Replace with this backup</button>
+          </span>
+        ) : (
+          <button type="button" className="btn" onClick={() => picker.current?.click()}><Upload size={14} aria-hidden /> Import backup</button>
+        )}
+      </Row>
+      <Row title="Clear all data" desc={`Deletes everything you have added in this browser${have ? ` — ${have}` : " (there is nothing stored right now)"}. Your settings are kept.`}>
+        <ConfirmAction label="Clear all data" warning="Everything you added will be deleted. This can't be undone." confirmLabel="Yes, delete everything" onConfirm={() => (clearAllData(), toast("All data cleared", "Your settings were kept.", "ok"))} />
+      </Row>
+      <Row title="Reset settings" desc="Returns every preference on this page to how it started, including the location, world clocks and your own categories. What you have added is kept.">
+        <ConfirmAction label="Reset settings" warning="All preferences go back to their defaults. This can't be undone." confirmLabel="Yes, reset settings" onConfirm={() => (resetSettings(), toast("Settings reset", "Preferences are back to their defaults.", "ok"))} />
+      </Row>
+    </>
   );
 }
 
@@ -267,6 +380,7 @@ export function SettingsPage() {
             <p className="st-note">
               Your tasks, reminders, events, birthdays and these preferences are kept only in this browser's own storage. There are no accounts and none of it is uploaded; it stays until you clear this site's browser data. Weather, news and the horoscope are fetched from external services, and for weather your location's coordinates are sent to them.
             </p>
+            <DataRows />
           </Section>
         </div>
       </div>

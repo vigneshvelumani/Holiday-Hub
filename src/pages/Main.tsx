@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { AlertCircle, Bell, BellOff, BellRing, CalendarDays, Check as CheckIcon, CheckCheck, ChevronDown, ChevronsUp, Clock, Equal, ListChecks, Monitor, Pencil, Plus, Repeat, Search, SlidersHorizontal, Trash2, X } from "lucide-react";
-import { addDays, combine, dayDiff, fmt, fmtTime, parseYmd, relDays, today, ymd } from "../lib/dates.ts";
-import { reminderDoneOn, reminderFireTime, taskDoneOn, toggleReminder, toggleTask } from "../lib/items.ts";
+import { addDays, dayDiff, fmt, fmtTime, parseYmd, relDays, today, ymd } from "../lib/dates.ts";
+import { reminderDoneOn, reminderFireTime, reminderRows, taskDoneOn, taskRows, toggleReminder, toggleTask } from "../lib/items.ts";
 import { notificationPermission, requestNotificationPermission, toast } from "../lib/notify.ts";
 import { describeRecurrence, nextOccurrence } from "../lib/recurrence.ts";
 import { allCategories, removeItem, useData, useSettings, type Reminder, type Task } from "../lib/store.ts";
@@ -119,20 +119,9 @@ export function TasksPage() {
   const now = today();
   const key = ymd(now);
 
-  // one row per task: for a repeating task, the next occurrence that is not completed
-  const rows = useMemo(() => {
-    return tasks.map((t) => {
-      let date = t.dueDate;
-      if (t.recurrence.freq !== "none") {
-        let d = nextOccurrence(t.recurrence, t.dueDate, addDays(now, -31));
-        for (let i = 0; d && i < 400 && t.doneDates.includes(ymd(d)); i++) d = nextOccurrence(t.recurrence, t.dueDate, addDays(d, 1));
-        date = d ? ymd(d) : t.dueDate;
-      }
-      const done = t.recurrence.freq === "none" ? t.status === "done" : !nextOccurrence(t.recurrence, t.dueDate, now) && taskDoneOn(t, date);
-      return { t, date, done, overdue: !done && date < key };
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tasks, key]);
+  // one row per task (shared with the dashboard and the sidebar badge): for a repeating task, the occurrence it stands at now
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const rows = useMemo(() => taskRows(tasks, now), [tasks, key]);
   type Row = (typeof rows)[number];
 
   const text = q.trim().toLowerCase();
@@ -178,7 +167,10 @@ export function TasksPage() {
     }
     const wasDone = repeats && taskDoneOn(r.t, r.date);
     toggleTask(r.t, r.date);
-    if (repeats && !wasDone && r.date) toast(`Done for ${shortDate(parseYmd(r.date), now)}`, "This task repeats, so its next date is listed now.", "ok");
+    if (repeats && !wasDone && r.date) {
+      const more = nextOccurrence(r.t.recurrence, r.t.dueDate, addDays(parseYmd(r.date), 1));
+      toast(`Done for ${shortDate(parseYmd(r.date), now)}`, more ? "This task repeats, so its next date is listed now." : "That was the last occurrence, so the task is completed.", "ok");
+    }
   };
 
   return (
@@ -279,7 +271,7 @@ export function TasksPage() {
                   isLeaving(r) ? (
                     <LeavingRow key={r.t.id} id={r.t.id} title={r.t.title} />
                   ) : (
-                    <TaskRow key={r.t.id} t={r.t} date={r.date} done={r.done} overdue={r.overdue} hour12={s.hour12} now={now} onToggle={() => tick(r)} />
+                    <TaskRow key={r.t.id} t={r.t} date={r.date} done={r.done} overdue={r.overdue} missed={r.missed} hour12={s.hour12} now={now} onToggle={() => tick(r)} />
                   ),
                 )}
               </ul>
@@ -295,7 +287,11 @@ export function TasksPage() {
   );
 }
 
-function TaskRow({ t, date, done, overdue, hour12, now, onToggle }: { t: Task; date: string; done: boolean; overdue: boolean; hour12: boolean; now: Date; onToggle: () => void }) {
+/** The question asked before a row is deleted; a repeating item goes with all of its occurrences. */
+const deleteQuestion = (title: string, repeats: boolean) => `Delete "${title}"?` + (repeats ? "\n\nIt repeats. This deletes every occurrence, past and future." : "");
+const missedText = (n: number) => `${n} earlier missed`;
+
+function TaskRow({ t, date, done, overdue, missed, hour12, now, onToggle }: { t: Task; date: string; done: boolean; overdue: boolean; missed: number; hour12: boolean; now: Date; onToggle: () => void }) {
   const ui = useUi();
   const d = date ? parseYmd(date) : null;
   const p = PRIORITY[t.priority] ?? PRIORITY.medium;
@@ -308,6 +304,7 @@ function TaskRow({ t, date, done, overdue, hour12, now, onToggle }: { t: Task; d
         <span className="wk-meta">
           {overdue && <span className="late">Overdue{late > 0 ? ` ${late} day${late === 1 ? "" : "s"}` : ""}</span>}
           <span>{d ? shortDate(d, now) : "No date"}</span>
+          {missed > 0 && !done && <span title="Earlier occurrences that were not ticked. Ticking this one leaves them as missed.">{missedText(missed)}</span>}
           {!t.allDay && t.startTime && <span className="num">{fmtTime(t.startTime, hour12)}{t.endTime ? "–" + fmtTime(t.endTime, hour12) : ""}</span>}
           <span>{t.category}</span>
           {t.recurrence.freq !== "none" && <span><Repeat size={12} aria-hidden /> {describeRecurrence(t.recurrence)}</span>}
@@ -318,7 +315,7 @@ function TaskRow({ t, date, done, overdue, hour12, now, onToggle }: { t: Task; d
       <div className="wk-acts">
         {d && <button type="button" className="btn ghost icon sm" aria-label="Show on calendar" title="Show on calendar" onClick={() => ui.openDay(d)}><CalendarDays size={15} /></button>}
         <button type="button" className="btn ghost icon sm" aria-label="Edit task" title="Edit task" onClick={() => ui.editTask(t)}><Pencil size={15} /></button>
-        <button type="button" className="btn ghost icon sm danger" aria-label="Delete task" title="Delete task" onClick={(e) => confirm(`Delete "${t.title}"?`) && (holdFocus(e.currentTarget), removeItem("tasks", t.id), toast("Task deleted"))}><Trash2 size={15} /></button>
+        <button type="button" className="btn ghost icon sm danger" aria-label="Delete task" title="Delete task" onClick={(e) => confirm(deleteQuestion(t.title, t.recurrence.freq !== "none")) && (holdFocus(e.currentTarget), removeItem("tasks", t.id), toast("Task deleted"))}><Trash2 size={15} /></button>
       </div>
     </li>
   );
@@ -352,22 +349,9 @@ export function RemindersPage() {
   const now = new Date();
   const day = today();
 
-  const rows = useMemo(() => {
-    return reminders.map((r) => {
-      let date = r.date;
-      if (r.recurrence.freq !== "none") {
-        let d = nextOccurrence(r.recurrence, r.date, addDays(today(), -7));
-        for (let i = 0; d && i < 400 && r.doneDates.includes(ymd(d)); i++) d = nextOccurrence(r.recurrence, r.date, addDays(d, 1));
-        // skip past occurrences that already notified — the next one is what matters
-        for (let i = 0; d && i < 400 && combine(ymd(d), r.time) < now && r.fired.includes(ymd(d)); i++) d = nextOccurrence(r.recurrence, r.date, addDays(d, 1));
-        if (d) date = ymd(d);
-      }
-      const at = combine(date, r.time);
-      const done = r.recurrence.freq === "none" ? r.done : !nextOccurrence(r.recurrence, r.date, today()) && reminderDoneOn(r, date);
-      return { r, date, at, done, overdue: !done && at < now };
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reminders, notifications.length]);
+  // one row per reminder (shared with the dashboard): for a repeating one, the occurrence it stands at now
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const rows = useMemo(() => reminderRows(reminders, now), [reminders, notifications.length]);
   type Row = (typeof rows)[number];
   const inTab = (x: Row) => (tab === "done" ? x.done : tab === "overdue" ? x.overdue : !x.done && !x.overdue);
   const isLeaving = (x: Row) => x.r.id in leaving && !inTab(x);
@@ -396,7 +380,10 @@ export function RemindersPage() {
     }
     const wasDone = repeats && reminderDoneOn(x.r, x.date);
     toggleReminder(x.r, x.date);
-    if (repeats && !wasDone) toast(`Done for ${shortDate(parseYmd(x.date), day)}`, "This reminder repeats, so its next time is listed now.", "ok");
+    if (repeats && !wasDone) {
+      const more = nextOccurrence(x.r.recurrence, x.r.date, addDays(parseYmd(x.date), 1));
+      toast(`Done for ${shortDate(parseYmd(x.date), day)}`, more ? "This reminder repeats, so its next time is listed now." : "That was the last occurrence, so the reminder is completed.", "ok");
+    }
   };
   const enable = async () => {
     const p = await requestNotificationPermission();
@@ -479,7 +466,7 @@ export function RemindersPage() {
                       isLeaving(x) ? (
                         <LeavingRow key={x.r.id} id={x.r.id} title={x.r.message} timed={<TimeBlock time={x.r.time} hour12={s.hour12} />} />
                       ) : (
-                        <ReminderRow key={x.r.id} r={x.r} date={x.date} at={x.at} done={x.done} overdue={x.overdue} hour12={s.hour12} onToggle={() => tick(x)} />
+                        <ReminderRow key={x.r.id} r={x.r} date={x.date} at={x.at} done={x.done} overdue={x.overdue} missed={x.missed} hour12={s.hour12} onToggle={() => tick(x)} />
                       ),
                     )}
                   </ul>
@@ -518,7 +505,7 @@ export function RemindersPage() {
   );
 }
 
-function ReminderRow({ r, date, at, done, overdue, hour12, onToggle }: { r: Reminder; date: string; at: Date; done: boolean; overdue: boolean; hour12: boolean; onToggle: () => void }) {
+function ReminderRow({ r, date, at, done, overdue, missed, hour12, onToggle }: { r: Reminder; date: string; at: Date; done: boolean; overdue: boolean; missed: number; hour12: boolean; onToggle: () => void }) {
   const ui = useUi();
   const fire = reminderFireTime(r, date);
   const sameDay = ymd(fire) === date;
@@ -535,13 +522,14 @@ function ReminderRow({ r, date, at, done, overdue, hour12, onToggle }: { r: Remi
               ? `Alert ${leadText(r.lead)}, ${sameDay ? fmt(fire, { hour: "numeric", minute: "2-digit", hour12 }) : fmt(fire, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", hour12 })}`
               : "Alert at the set time"}
           </span>
+          {missed > 0 && !done && <span title="Earlier occurrences that were not ticked. Ticking this one leaves them as missed.">{missedText(missed)}</span>}
           {r.recurrence.freq !== "none" && <span><Repeat size={12} aria-hidden /> {describeRecurrence(r.recurrence)}</span>}
         </span>
       </button>
       <div className="wk-acts">
         <button type="button" className="btn ghost icon sm" aria-label="Show on calendar" title="Show on calendar" onClick={() => ui.openDay(at)}><CalendarDays size={15} /></button>
         <button type="button" className="btn ghost icon sm" aria-label="Edit reminder" title="Edit reminder" onClick={() => ui.editReminder(r)}><Pencil size={15} /></button>
-        <button type="button" className="btn ghost icon sm danger" aria-label="Delete reminder" title="Delete reminder" onClick={(e) => confirm(`Delete "${r.message}"?`) && (holdFocus(e.currentTarget), removeItem("reminders", r.id), toast("Reminder deleted"))}><Trash2 size={15} /></button>
+        <button type="button" className="btn ghost icon sm danger" aria-label="Delete reminder" title="Delete reminder" onClick={(e) => confirm(deleteQuestion(r.message, r.recurrence.freq !== "none")) && (holdFocus(e.currentTarget), removeItem("reminders", r.id), toast("Reminder deleted"))}><Trash2 size={15} /></button>
       </div>
     </li>
   );

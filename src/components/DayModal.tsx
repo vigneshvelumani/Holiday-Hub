@@ -10,7 +10,7 @@ import { itemsOn, newTask, toggleReminder, toggleTask } from "../lib/items.ts";
 import { toast } from "../lib/notify.ts";
 import { bankSaturday, officeSaturday } from "../lib/saturday.ts";
 import { useWeather, uvBand, weatherLabel } from "../lib/services.ts";
-import { removeItem, saveItem, useData, useSettings } from "../lib/store.ts";
+import { getData, removeItem, saveItem, useData, useSettings } from "../lib/store.ts";
 import { thoughtFor } from "../lib/thoughts.ts";
 import { Check, ItemIcon, MOODS, MoonDisc, WeatherIcon, tone, useItemClick, useUi } from "./ui.tsx";
 import { SatChip } from "./WeekGrid.tsx";
@@ -24,7 +24,9 @@ export function DayModal({ date, onClose, onDate }: { date: Date; onClose: () =>
   const weather = useWeather(s);
   const key = ymd(date);
   const ref = useRef<HTMLDivElement>(null);
-  const items = itemsOn(date, data, s);
+  // The calendar's layer switches decide what the calendars draw, not what this popup lists:
+  // your own tasks, reminders and events for the day are always here (holiday categories still apply).
+  const items = useMemo(() => itemsOn(date, data, { ...s, layers: { ...s.layers, tasks: true, reminders: true, events: true } }), [key, data, s]);
   const holidays = items.filter((i) => i.holiday);
   const mine = items.filter((i) => !i.holiday);
   const sat = officeSaturday(date);
@@ -35,6 +37,28 @@ export function DayModal({ date, onClose, onDate }: { date: Date; onClose: () =>
   const [quick, setQuick] = useState("");
   const saved = data.notes.find((n) => n.id === key)?.content || "";
   const [note, setNote] = useState(saved);
+  // What has been typed but not saved yet, with the day it belongs to. Kept in a ref so that every
+  // way out of this day — Escape, the backdrop, Close, the arrows, Back, the tab closing — saves
+  // the latest text rather than whatever a stale closure remembers.
+  const unsaved = useRef<{ key: string; text: string } | null>(null);
+  const flushNote = () => {
+    const p = unsaved.current;
+    unsaved.current = null;
+    if (!p) return;
+    const stored = getData().notes.find((n) => n.id === p.key)?.content || "";
+    if (p.text === stored || (!p.text.trim() && !stored)) return; // unchanged, or nothing to write
+    if (p.text.trim()) saveItem("notes", { id: p.key, content: p.text, updatedAt: Date.now() });
+    else removeItem("notes", p.key);
+    toast(p.text.trim() ? "Note saved" : "Note cleared", undefined, "ok");
+  };
+  useEffect(() => {
+    window.addEventListener("pagehide", flushNote);
+    // runs when the popup moves to another day and when it closes, however it was closed
+    return () => {
+      window.removeEventListener("pagehide", flushNote);
+      flushNote();
+    };
+  }, [key]);
   useEffect(() => setNote(saved), [key, saved]);
   const mood = data.moods.find((m) => m.id === key);
   const pan = useMemo(() => {
@@ -97,14 +121,10 @@ export function DayModal({ date, onClose, onDate }: { date: Date; onClose: () =>
     e.preventDefault();
     if (!quick.trim()) return;
     saveItem("tasks", newTask(key, { title: quick.trim() }));
+    toast("Task added", `${quick.trim()} · ${fmt(date, { weekday: "short", day: "numeric", month: "short" })}`, "ok");
     setQuick("");
   };
-  const saveNote = () => {
-    if (note === saved) return;
-    if (note.trim()) saveItem("notes", { id: key, content: note, updatedAt: Date.now() });
-    else removeItem("notes", key);
-    toast(note.trim() ? "Note saved" : "Note cleared", undefined, "ok");
-  };
+  const saveNote = flushNote;
   const clock = (iso: string) => {
     const [d, t] = iso.split("T");
     const [y, m, dd] = d.split("-").map(Number);
@@ -217,7 +237,7 @@ export function DayModal({ date, onClose, onDate }: { date: Date; onClose: () =>
               <div className="dm-sec"><label htmlFor="day-note">Note</label>
                 <button className="hb-chip" onClick={saveNote} disabled={note === saved}>Save</button>
               </div>
-              <textarea id="day-note" className="textarea" value={note} onChange={(e) => setNote(e.target.value)} onBlur={saveNote} placeholder="Write a note for this day…" rows={3} maxLength={5000} />
+              <textarea id="day-note" className="textarea" value={note} onChange={(e) => (setNote(e.target.value), (unsaved.current = { key, text: e.target.value }))} onBlur={saveNote} placeholder="Write a note for this day…" rows={3} maxLength={5000} />
             </section>
 
             <section>

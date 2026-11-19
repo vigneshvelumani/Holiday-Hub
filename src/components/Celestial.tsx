@@ -91,7 +91,7 @@ const DOW_LONG = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Frida
 const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /** One lunar month, new moon to new moon, with the real phase for each day. */
-export function LunarCycle({ dateKey, place, onPick }: { dateKey: string; place: Place; onPick: (key: string) => void }) {
+export function LunarCycle({ dateKey, place, todayKey: todayAtPlace, onPick }: { dateKey: string; place: Place; /** today's date at the place; worked out here when the page doesn't pass it */ todayKey?: string; onPick: (key: string) => void }) {
   const ref = useRef<HTMLDivElement>(null);
   const days = useMemo(() => {
     try {
@@ -114,7 +114,7 @@ export function LunarCycle({ dateKey, place, onPick }: { dateKey: string; place:
   }, [dateKey, place.tz]);
   if (!days.length) return <p className="note-state">The lunar cycle couldn't be calculated for this date.</p>;
 
-  const todayKey = zonedYmd(place.tz, new Date());
+  const todayKey = todayAtPlace ?? zonedYmd(place.tz, new Date());
   const hasSelected = days.some((d) => d.key === dateKey);
   const label = (key: string) => {
     const [, mm, dd] = key.split("-").map(Number);

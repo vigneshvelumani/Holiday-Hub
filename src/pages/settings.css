@@ -73,6 +73,16 @@
 .st-page .st-add .btn:disabled { opacity: 1; background: var(--surface-2); color: var(--ink-3); }
 .st-note { font-size: 14.5px; line-height: 1.6; color: var(--ink-2); max-width: 76ch; padding: 6px 0 18px; }
 
+/* privacy & storage: backup, restore and the two-step destructive actions (flat fills only) */
+.st-msg { display: block; margin-top: 6px; font-weight: 700; color: var(--ink); }
+.st-msg.err { color: var(--danger); }
+.st-confirm { display: grid; grid-template-columns: auto auto; justify-content: end; align-items: center; gap: 8px 10px; }
+/* the warning wraps to the width of the two buttons instead of widening the control column */
+.st-confirm-text { grid-column: 1 / -1; width: 0; min-width: 100%; text-align: right; font-size: 13px; line-height: 1.4; font-weight: 700; color: var(--danger); }
+.st-page .btn.st-warn { color: var(--danger); }
+.st-page .btn.st-danger { background: var(--danger); color: var(--bg); }
+.st-page .btn.st-danger:hover { opacity: 0.9; }
+
 /* narrower than the two-column layout: the section list becomes a row of pills above the sections */
 @media (max-width: 1180px) {
   .st-layout { grid-template-columns: minmax(0, 1fr); gap: 16px; }

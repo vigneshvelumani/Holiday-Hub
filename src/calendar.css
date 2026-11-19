@@ -85,6 +85,9 @@
 /* ── calendar page toolbar ─────────────────────────────────────────────────── */
 :root:root .cal .cal-view { min-width: 0; margin-top: 16px; }
 :root:root .cb { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; }
+/* the toolbar is its own layer above the chip row and the grid, so an open popover can never be painted underneath them */
+:root:root .cal .cb { position: relative; z-index: 30; }
+:root:root .cal .cb-chips, :root:root .cal .cal-view { position: relative; z-index: 0; isolation: isolate; }
 :root:root .cb-main { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; min-width: 0; flex: 1 1 auto; }
 :root:root .cb-popwrap { position: relative; min-width: 0; }
 :root:root .cb-title {
@@ -302,6 +305,12 @@
 :root:root .mv-meta { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; min-width: 0; font: 600 11.5px/1 var(--font); color: var(--ink-3); white-space: nowrap; }
 :root:root .mv-meta svg { flex: none; }
 :root:root .mv-wx { display: inline-flex; align-items: center; gap: 3px; }
+/* the numeral never breaks ("18" must not become "1 / 8"), and nothing in the header row may spill into the next day */
+:root:root .mv-num { flex: none; white-space: nowrap; }
+:root:root .mv-meta { overflow: hidden; flex: 0 1 auto; }
+/* today: numeral chip and weather on the first line, the word "Today" on its own line under them */
+:root:root .mv-cell.is-today .mv-top { flex-wrap: wrap; row-gap: 4px; }
+:root:root .mv-cell.is-today .today-label { order: 3; flex: 1 0 100%; padding-left: 2px; }
 :root:root .mv-items { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 :root:root .mv-items .hb-pill { height: 24px; font-size: 12px; }
 :root:root .mv-dots { display: none; flex-wrap: wrap; gap: 3px; min-height: 6px; }

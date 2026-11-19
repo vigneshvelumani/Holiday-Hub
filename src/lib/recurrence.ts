@@ -1,4 +1,4 @@
-import { addDays, dayDiff, daysInMonth, parseYmd, ymd, type Ymd } from "./dates.ts";
+import { addDays, dayDiff, daysInMonth, fmt, isValidYmd, parseYmd, ymd, type Ymd } from "./dates.ts";
 
 export type Freq = "none" | "daily" | "weekly" | "monthly" | "yearly" | "custom";
 export type Unit = "day" | "week" | "month" | "year";
@@ -70,9 +70,22 @@ export function nextOccurrence(r: Recurrence | undefined, start: Ymd, from: Date
   return null;
 }
 
+/** Last occurrence on or before `from`; null when the series has not started by then. */
+export function prevOccurrence(r: Recurrence | undefined, start: Ymd, from: Date, horizonDays = 366 * 5): Date | null {
+  const s = parseYmd(start);
+  if (dayDiff(s, from) < 0) return null;
+  if (!r || r.freq === "none") return s;
+  let d = r.until && isValidYmd(r.until) && ymd(from) > r.until ? parseYmd(r.until) : from;
+  for (let i = 0; i <= horizonDays && dayDiff(s, d) >= 0; i++) {
+    if (occursOn(r, start, d)) return d;
+    d = addDays(d, -1);
+  }
+  return null;
+}
+
 export function describeRecurrence(r: Recurrence | undefined): string {
   if (!r || r.freq === "none") return "Does not repeat";
-  const until = r.until ? ` until ${r.until}` : "";
+  const until = r.until ? ` until ${isValidYmd(r.until) ? fmt(parseYmd(r.until), { day: "numeric", month: "short", year: "numeric" }) : r.until}` : "";
   const names = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   const days = r.weekdays?.length ? ` on ${r.weekdays.map((d) => names[d]).join(", ")}` : "";
   if (r.freq === "daily") return "Every day" + until;

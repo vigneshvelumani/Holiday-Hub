@@ -15,14 +15,13 @@
 .page.wc .wc-hero { border-radius: var(--radius-lg); min-height: 340px; box-shadow: none; color: #fff; }
 /* text runs the full width here, so the veil does too: 0.6+ keeps white text at 4.5:1 even over a white sky */
 .wc-hero .scene-scrim { background: linear-gradient(90deg, rgba(9, 13, 30, 0.68), rgba(9, 13, 30, 0.62)); }
-.wc-hero .scene-content { text-shadow: 0 1px 3px rgba(9, 13, 30, 0.5); }
 .wc-hero :focus-visible { outline-color: #fff; }
 .wc-hero-in { display: flex; flex-direction: column; gap: 24px; min-height: 340px; height: 100%; padding: 26px 28px 26px; }
 .wc-hero-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px 20px; flex-wrap: wrap; }
 .wc-title { min-width: 0; }
 .wc-title h1 { font-size: 34px; line-height: 1.08; font-weight: 800; letter-spacing: -0.04em; color: #fff; }
 .wc-title p { margin: 6px 0 0; font-size: 14px; font-weight: 600; color: #fff; }
-.page.wc .wc-hero .btn.wc-pill { height: 42px; padding: 0 18px; border: 0; border-radius: var(--pill); background: #fff; color: #0e0e11; font-size: 14px; font-weight: 700; text-shadow: none; box-shadow: none; }
+.page.wc .wc-hero .btn.wc-pill { height: 42px; padding: 0 18px; border: 0; border-radius: var(--pill); background: #fff; color: #0e0e11; font-size: 14px; font-weight: 700; box-shadow: none; }
 .page.wc .wc-hero .btn.wc-pill:hover { background: #ecebf2; }
 
 .wc-hero-main { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(300px, 400px); gap: 20px 32px; align-items: center; margin-top: auto; }
@@ -45,11 +44,11 @@
 .wc-hero-time em { font-style: normal; font-size: 0.2em; font-weight: 800; letter-spacing: 0; margin-left: 0.5em; text-transform: uppercase; }
 .wc-hero-date { margin-top: 16px; font-size: 20px; font-weight: 800; letter-spacing: -0.03em; }
 /* lime = now */
-.wc-hero-status { display: inline-flex; align-items: center; gap: 8px; min-height: 34px; margin-top: 12px; padding: 5px 16px 5px 12px; border-radius: var(--pill); background: var(--today); color: var(--today-ink); text-shadow: none; font-size: 14px; font-weight: 700; line-height: 1.25; font-variant-numeric: tabular-nums; }
+.wc-hero-status { display: inline-flex; align-items: center; gap: 8px; min-height: 34px; margin-top: 12px; padding: 5px 16px 5px 12px; border-radius: var(--pill); background: var(--today); color: var(--today-ink); font-size: 14px; font-weight: 700; line-height: 1.25; font-variant-numeric: tabular-nums; }
 .wc-hero-status svg { flex: none; }
 
 /* your day: a floating card */
-.wc-day { padding: 18px 20px 16px; border-radius: var(--radius); background: var(--surface); color: var(--ink); text-shadow: none; min-width: 0; }
+.wc-day { padding: 18px 20px 16px; border-radius: var(--radius); background: var(--surface); color: var(--ink); min-width: 0; }
 .wc-day-k { font-size: 13px; font-weight: 700; color: var(--ink); margin-bottom: 14px; }
 .wc-dial { position: relative; height: 14px; border-radius: var(--pill); background: var(--p-grey); }
 .wc-dial .lit { position: absolute; top: 0; bottom: 0; border-radius: var(--pill); background: var(--p-peach); box-shadow: inset 0 0 0 1.5px var(--p-peach-ink); }
@@ -234,4 +233,35 @@
 @media (prefers-reduced-motion: reduce) {
   .wc-dial i { transition: none; }
 }
+
+/* ── light theme: no dark surfaces ──────────────────────────────────────────
+   The hero keeps the live sky but shows it through a white veil, with ink text. The veil is
+   0.82+ everywhere, so even over a black night sky the backdrop is no darker than #d1d1d1:
+   --ink on it is 12.6:1, --ink-2 7.0:1. Night tiles are sky-blue (day tiles stay lilac); the
+   Day / Night chip with its icon still carries the state. Dark theme is untouched. */
+:root[data-theme="light"] .page.wc .wc-hero { color: var(--ink); background: #fff; }
+:root[data-theme="light"] .wc-hero .scene-scrim { background: linear-gradient(90deg, rgba(255, 255, 255, 0.86), rgba(255, 255, 255, 0.82)); }
+:root[data-theme="light"] .wc-hero :focus-visible { outline-color: var(--ink); }
+:root[data-theme="light"] .wc-hero .wc-title h1 { color: var(--ink); }
+:root[data-theme="light"] .wc-hero .wc-title p { color: var(--ink-2); }
+:root[data-theme="light"] .page.wc .wc-hero .btn.wc-pill { background: var(--btn); color: var(--btn-ink); }
+:root[data-theme="light"] .page.wc .wc-hero .btn.wc-pill:hover { background: #2c2c33; }
+:root[data-theme="light"] .wc-hero .wc-hero-face { background: rgba(14, 14, 17, 0.1); }
+/* the hero face is white by day and by night; the status pill below says which it is */
+:root[data-theme="light"] .wc-hero-face .aclock.night .face { fill: #fff; }
+:root[data-theme="light"] .wc-hero-face .aclock.night .tick { stroke: #62626d; }
+:root[data-theme="light"] .wc-hero-face .aclock.night .tick.major, :root[data-theme="light"] .wc-hero-face .aclock.night .hand { stroke: #0e0e11; }
+:root[data-theme="light"] .wc-hero-face .aclock.night text { fill: #0e0e11; }
+:root[data-theme="light"] .wc-hero-face .aclock .hand.sec { stroke: #5a3fd0; }
+:root[data-theme="light"] .wc-hero-face .aclock .hub { fill: #5a3fd0; stroke: #fff; }
+:root[data-theme="light"] .wc-hero-face .aclock .dayarc { stroke: #5a3fd0; }
+
+:root[data-theme="light"] .wc .wc-card.night {
+  --tb: var(--p-sky); --ink: var(--p-sky-ink); --ink-2: var(--p-sky-ink); --ink-3: var(--p-sky-ink); --accent: var(--p-sky-ink);
+  --surface: #ffffff; --surface-2: color-mix(in srgb, var(--p-sky-ink) 10%, transparent); --line: color-mix(in srgb, var(--p-sky-ink) 18%, transparent); --line-strong: color-mix(in srgb, var(--p-sky-ink) 36%, transparent);
+  --chip: #ffffff; --danger: var(--p-sky-ink);
+}
+:root[data-theme="light"] .wc .wc-card.night .aclock .hand.sec { stroke: #1d4fa8; }
+:root[data-theme="light"] .wc .wc-card.night .aclock .hub { fill: #1d4fa8; }
+:root[data-theme="light"] .wc .wc-card.night .aclock .dayarc { stroke: var(--ink); }
 @media print { .wc-add, .wc-rm, .wc-hero .btn.wc-pill, .wc-addbtn { display: none; } }

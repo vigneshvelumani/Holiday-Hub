@@ -64,6 +64,21 @@ export interface WeatherHour {
   precip: number | null;
   wind: number | null;
   humidity: number | null;
+  // added for the forecast page (cache key "weather4"); optional, so a reading without them still renders
+  /** apparent temperature, in the same unit as `temp` */
+  feels?: number | null;
+  /** total cloud cover, % */
+  cloud?: number | null;
+  /** direction the wind blows from, degrees */
+  windDir?: number | null;
+  /** km/h */
+  gusts?: number | null;
+  uv?: number | null;
+  dewPoint?: number | null;
+  /** metres */
+  visibility?: number | null;
+  /** sea-level pressure, hPa */
+  pressure?: number | null;
 }
 export interface AirQuality {
   aqi: number;
@@ -83,6 +98,7 @@ export interface Weather {
     temp: number; feels: number; humidity: number; wind: number; windDir: number | null; gusts: number | null; code: number; isDay: boolean;
     precip: number; pressure: number | null; visibility: number | null; dewPoint: number | null; uv: number | null; cloud: number | null;
   };
+  /** consecutive hours from local midnight of the first forecast day (the dashboard and the weather page look up "now" by time) */
   hourly: WeatherHour[];
   daily: WeatherDay[];
   air: AirQuality | null;
@@ -122,18 +138,29 @@ export function uvBand(uv: number): string {
 }
 export const compass = (deg: number) => ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"][Math.round(deg / 22.5) % 16];
 
-const weatherKey = (p: Place, unit: string) => `almanac.weather3:${p.lat.toFixed(3)},${p.lon.toFixed(3)}:${unit}`;
+const weatherKey = (p: Place, unit: string) => `almanac.weather4:${p.lat.toFixed(3)},${p.lon.toFixed(3)}:${unit}`;
+
+/** Hours of hourly forecast kept (and cached): ten whole days. */
+const HOURLY_KEEP = 240;
+// readings saved by earlier versions lack the newer fields and are never read again: free their space
+try {
+  for (let i = localStorage.length - 1; i >= 0; i--) {
+    const k = localStorage.key(i);
+    if (k && /^almanac.weather[23]?:/.test(k)) localStorage.removeItem(k);
+  }
+} catch {
+  /* storage unavailable */
+}
 
 export async function fetchWeather(place: Place, unit: "C" | "F"): Promise<Weather> {
   const q = new URLSearchParams({
     latitude: String(place.lat),
     longitude: String(place.lon),
     current: "temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,weather_code,is_day,precipitation,pressure_msl,visibility,dew_point_2m,uv_index,cloud_cover",
-    hourly: "temperature_2m,weather_code,is_day,precipitation_probability,precipitation,wind_speed_10m,relative_humidity_2m",
+    hourly: "temperature_2m,apparent_temperature,weather_code,is_day,precipitation_probability,precipitation,wind_speed_10m,wind_direction_10m,wind_gusts_10m,relative_humidity_2m,dew_point_2m,cloud_cover,visibility,uv_index,pressure_msl",
     daily: "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,wind_speed_10m_max,uv_index_max,sunrise,sunset",
     timezone: "auto",
     forecast_days: "16",
-    forecast_hours: "48",
     temperature_unit: unit === "F" ? "fahrenheit" : "celsius",
   });
   const air = getJson<any>(
@@ -155,9 +182,12 @@ export async function fetchWeather(place: Place, unit: "C" | "F"): Promise<Weath
       gusts: num(c.wind_gusts_10m), code: c.weather_code, isDay: c.is_day === 1, precip: c.precipitation, pressure: num(c.pressure_msl),
       visibility: num(c.visibility), dewPoint: num(c.dew_point_2m), uv: num(c.uv_index), cloud: num(c.cloud_cover),
     },
-    hourly: (h.time as string[]).map((time, i) => ({
+    // whole days from local midnight today; ten of them are kept (the page offers ten day tiles)
+    hourly: (h.time as string[]).slice(0, HOURLY_KEEP).map((time, i) => ({
       time, temp: h.temperature_2m[i], code: h.weather_code[i], isDay: h.is_day?.[i] === 1, rainProb: num(h.precipitation_probability?.[i]),
       precip: num(h.precipitation?.[i]), wind: num(h.wind_speed_10m?.[i]), humidity: num(h.relative_humidity_2m?.[i]),
+      feels: num(h.apparent_temperature?.[i]), cloud: num(h.cloud_cover?.[i]), windDir: num(h.wind_direction_10m?.[i]), gusts: num(h.wind_gusts_10m?.[i]),
+      uv: num(h.uv_index?.[i]), dewPoint: num(h.dew_point_2m?.[i]), visibility: num(h.visibility?.[i]), pressure: num(h.pressure_msl?.[i]),
     })),
     daily: d.time.map((date: string, i: number) => ({
       date, code: d.weather_code[i], tmax: d.temperature_2m_max[i], tmin: d.temperature_2m_min[i],

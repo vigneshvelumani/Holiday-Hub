@@ -376,28 +376,56 @@ function JumpTo({ focus, onGo, onClose }: { focus: Date; onGo: (d: Date) => void
   useEffect(() => {
     return popoverBehaviour(ref.current, onClose);
   }, []);
+  // The date field is only a draft while it is being typed: day, month and year can each be
+  // entered from the keyboard, and nothing moves until Enter or Go.
+  const [day, setDay] = useState(ymd(focus));
+  const [last, setLast] = useState<"date" | "month">("month"); // which control was changed most recently
   const year = Math.floor(Number(y));
-  const ok = year >= 1 && year <= 9999;
+  const dayOk = /^\d{4}-\d{2}-\d{2}$/.test(day) && ymd(parseYmd(day)) === day && +day.slice(0, 4) >= 1;
+  const ok = last === "date" ? dayOk : year >= 1 && year <= 9999;
+  const go = (to: Date) => {
+    onGo(to);
+    // hand focus back to the month title that opened this
+    ref.current?.parentElement?.querySelector<HTMLElement>("[aria-haspopup]")?.focus();
+    onClose();
+  };
+  const submit = () => {
+    if (!ok) return;
+    go(last === "date" ? parseYmd(day) : mkDate(year, m, Math.min(focus.getDate(), daysInMonth(year, m))));
+  };
   return (
     <div className="cb-pop cb-pop-jump" ref={ref} role="dialog" aria-label="Jump to date">
       <label className="field">
         <span className="label">Go to a specific date</span>
-        <input className="input" type="date" data-autofocus defaultValue={ymd(focus)} onChange={(e) => e.target.value && e.target.valueAsDate && (onGo(parseYmd(e.target.value)), onClose())} />
+        <input
+          className="input"
+          type="date"
+          data-autofocus
+          value={day}
+          min="0001-01-01"
+          max="9999-12-31"
+          onChange={(e) => (setDay(e.target.value), setLast("date"))}
+          onKeyDown={(e) => {
+            if (e.key !== "Enter") return;
+            e.preventDefault();
+            if (dayOk) go(parseYmd(day));
+          }}
+        />
       </label>
-      <form className="grid2" onSubmit={(e) => (e.preventDefault(), ok && (onGo(mkDate(year, m, Math.min(focus.getDate(), daysInMonth(year, m)))), onClose()))}>
+      <form className="grid2" onSubmit={(e) => (e.preventDefault(), submit())}>
         <label className="field">
           <span className="label">Month</span>
-          <select className="select" value={m} onChange={(e) => setM(+e.target.value)}>
+          <select className="select" value={m} onChange={(e) => (setM(+e.target.value), setLast("month"))}>
             {MONTHS.map((n, i) => <option key={n} value={i}>{n}</option>)}
           </select>
         </label>
         <label className="field">
           <span className="label">Year</span>
-          <input className="input" type="number" min={1} max={9999} value={y} onChange={(e) => setY(e.target.value)} />
+          <input className="input" type="number" min={1} max={9999} value={y} onChange={(e) => (setY(e.target.value), setLast("month"))} />
         </label>
         <button className="btn primary hb-btn" type="submit" disabled={!ok} style={{ gridColumn: "1 / -1" }}>Go</button>
       </form>
-      <span className="hint xs muted">{ok ? "Any year from 1 to 9999 — the calendar has no fixed range." : <span role="alert" style={{ color: "var(--danger)", fontWeight: 700 }}>Enter a year between 1 and 9999.</span>}</span>
+      <span className="hint xs muted">{ok ? (last === "date" ? `Press Enter or Go to open ${fmt(parseYmd(day), { day: "numeric", month: "long", year: "numeric" })}.` : "Any year from 1 to 9999 — the calendar has no fixed range.") : <span role="alert" style={{ color: "var(--danger)", fontWeight: 700 }}>{last === "date" ? "Enter a complete date: day, month and year." : "Enter a year between 1 and 9999."}</span>}</span>
     </div>
   );
 }

@@ -1,5 +1,5 @@
 /* Holiday Hub — visual system v4, "mono + pastel" (loaded after premium.css; wins on tokens).
-   Black chrome, white work surface, soft pastel blocks, pill controls, lime for "today / now".
+   Chrome follows the theme (light rail in light, black in dark), white work surface, soft pastel blocks, pill controls, lime for "today / now".
    Every ink-on-fill pair below is ≥ 4.5:1. Token NAMES are unchanged from v3; values are new,
    and the pastel pairs (--p-*) and --btn / --wash are additions. */
 
@@ -52,16 +52,20 @@
   --offsat-soft: #cfe9df;
   --c-reminder: #8a5a00;
 
-  /* chrome: black rail with slightly lifted panels */
-  --nav-bg: #0a0a0c;
-  --nav-bg-2: #0a0a0c;
-  --nav-panel: #17171a;
-  --nav-panel-2: #212126;
-  --nav-ink: #b9b9c3;
-  --nav-ink-strong: #ffffff;
-  --nav-active: #d6ccff; /* active item: lilac pill with --nav-active-ink text */
-  --nav-active-ink: #14102e;
-  --nav-line: rgba(255, 255, 255, 0.09);
+  /* chrome (light theme): a soft grey-lilac rail with lifted white panels; the current item is a black pill */
+  --nav-bg: #e7e5ee;
+  --nav-bg-2: #e7e5ee;
+  --nav-panel: #f7f6fa;
+  --nav-panel-2: #dcd9e6;
+  --nav-panel-3: #cbc8d6;
+  --nav-ink: #45454f;
+  --nav-ink-3: #5c5c67;
+  --nav-ink-strong: #0e0e11;
+  --nav-active: #0e0e11;
+  --nav-active-ink: #ffffff;
+  --nav-line: rgba(14, 14, 17, 0.1);
+  --nav-sat-work: #8a4306;
+  --nav-sat-off: #0f5a44;
 
   /* the header wash behind the top of the work area (replaces the photo-like sky in the shell) */
   --wash: linear-gradient(105deg, #ecf9b0 0%, #f0eaff 42%, #d3e6ff 100%);
@@ -109,10 +113,20 @@
   --offsat-soft: #12302a;
   --c-reminder: #f2bd6b;
 
+  /* chrome (dark theme): black rail, lilac pill for the current item */
   --nav-bg: #050506;
   --nav-bg-2: #050506;
   --nav-panel: #121214;
   --nav-panel-2: #1b1b1f;
+  --nav-panel-3: #2e2e36;
+  --nav-ink: #b9b9c3;
+  --nav-ink-3: #9a9aa6;
+  --nav-ink-strong: #ffffff;
+  --nav-active: #d6ccff;
+  --nav-active-ink: #14102e;
+  --nav-line: rgba(255, 255, 255, 0.09);
+  --nav-sat-work: #ffd9b5;
+  --nav-sat-off: #c4dfda;
 
   --wash: linear-gradient(105deg, #262d0c 0%, #1d183a 45%, #0f1d33 100%);
 

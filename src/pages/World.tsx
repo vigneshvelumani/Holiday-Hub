@@ -29,8 +29,19 @@ function useClocks() {
     toast("Clock added", `${c.label} · ${tzName(c.tz)}`, "ok");
   };
   const remove = (c: WorldClock) => {
-    updateSettings({ worldClocks: getSettings().worldClocks.filter((x) => !sameClock(x, c)) });
-    toast("Clock removed", c.label);
+    const before = getSettings().worldClocks;
+    const at = before.findIndex((x) => sameClock(x, c));
+    if (at < 0) return;
+    updateSettings({ worldClocks: before.filter((x) => !sameClock(x, c)) });
+    // one click removes it, so the toast offers the way back: the clock returns to the place it had
+    toast("Clock removed", c.label, "info", {
+      label: "Undo",
+      run: () => {
+        const cur = getSettings().worldClocks;
+        if (cur.some((x) => sameClock(x, c))) return;
+        updateSettings({ worldClocks: [...cur.slice(0, at), c, ...cur.slice(at)] });
+      },
+    });
   };
   return { clocks: s.worldClocks, add, remove };
 }
@@ -152,7 +163,7 @@ function ClockCard({ c, now, hour12, onRemove }: { c: WorldClock; now: Date; hou
             {fmtZoneDate(now, c.tz)}
             {shift !== 0 && <span className="wc-tag">{shift > 0 ? "Tomorrow" : "Yesterday"}</span>}
           </div>
-          <div className="wc-diff">{diff === "Same time" ? "Same time as you" : `${diff} you`} · {gmtLabel(tzOffset(c.tz, now))}</div>
+          <div className="wc-diff">{diff === "Same time" ? "Same time as you" : `${diff}${diff.endsWith("ahead") ? " of" : ""} you`} · {gmtLabel(tzOffset(c.tz, now))}</div>
         </div>
         <AnalogClock tz={c.tz} now={now} size={92} night={night} daylight={sun ? [dayFrac(c.tz, sun.rise), dayFrac(c.tz, sun.set)] : null} label={c.label} />
       </div>

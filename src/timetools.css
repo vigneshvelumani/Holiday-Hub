@@ -55,6 +55,9 @@
 .tt-tag-work { box-shadow: none; background: var(--p-sage); color: var(--p-sage-ink); }
 .tt-tag-early, .tt-tag-late { box-shadow: none; background: var(--p-peach) repeating-linear-gradient(135deg, transparent 0 4px, color-mix(in srgb, var(--p-peach-ink) 14%, transparent) 4px 6px); color: var(--p-peach-ink); }
 .tt-tag-night { box-shadow: none; background: var(--p-grey); color: var(--p-grey-ink); }
+/* light theme: the source tile is lilac, not black (it still carries the "Source" tag) */
+:root[data-theme="light"] .page .tt-row-src { --ink: var(--p-lilac-ink); --ink-2: var(--p-lilac-ink); --ink-3: var(--p-lilac-ink); --line-strong: var(--p-lilac-ink); --surface: #ffffff; background: var(--p-lilac); color: var(--p-lilac-ink); }
+:root[data-theme="light"] .page .tt-row-src .tt-tag-src { box-shadow: inset 0 0 0 1.5px var(--p-lilac-ink); color: var(--p-lilac-ink); }
 
 /* ── planner ── */
 .tt-verdict { padding: 14px 18px; border-radius: var(--radius); background: var(--today-soft); font-size: 14.5px; font-weight: 500; color: var(--ink); line-height: 1.45; }

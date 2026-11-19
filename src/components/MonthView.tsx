@@ -1,13 +1,12 @@
 import { useMemo, useRef, useState, type DragEvent, type KeyboardEvent } from "react";
 import { Landmark, StickyNote } from "lucide-react";
-import { fmt, fmtLong, fmtMonthYear, monthGrid, parseYmd, sameDay, today, ymd, type Ymd } from "../lib/dates.ts";
-import { itemsOn, moveItem, type ItemFilter } from "../lib/items.ts";
-import { toast } from "../lib/notify.ts";
+import { fmtLong, fmtMonthYear, monthGrid, sameDay, today, ymd, type Ymd } from "../lib/dates.ts";
+import { itemsOn, type ItemFilter } from "../lib/items.ts";
 import { SATURDAY_LABEL, bankSaturday, officeSaturday } from "../lib/saturday.ts";
 import { weatherLabel, type WeatherDay } from "../lib/services.ts";
 import type { DataState, Settings } from "../lib/store.ts";
 import { ItemDot, MOODS, WeatherIcon, tone, useItemClick } from "./ui.tsx";
-import { Pill, SatChip } from "./WeekGrid.tsx";
+import { Pill, SatChip, dropMove } from "./WeekGrid.tsx";
 import "../calendar.css";
 
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -49,18 +48,8 @@ export function MonthView({ focus, selected, onSelect, data, s, filter, weather,
   };
 
   const drop = (e: DragEvent, key: Ymd) => {
-    e.preventDefault();
     setDropKey(null);
-    try {
-      const src = JSON.parse(e.dataTransfer.getData("text/plain")) as { key: string; date: Ymd };
-      const item = itemsOn(parseYmd(src.date), data, s).find((i) => i.key === src.key);
-      if (item && moveItem(item, key)) {
-        const series = (item.task || item.reminder || item.event)?.recurrence.freq !== "none";
-        toast(`Moved to ${fmt(parseYmd(key), { weekday: "short", day: "numeric", month: "short" })}`, series ? `${item.title} — the whole repeating series was shifted.` : item.title, "ok");
-      }
-    } catch {
-      /* not one of ours */
-    }
+    dropMove(e, key, data, s); // one-off items move; a repeating item is left alone and a message says why
   };
 
   const order = Array.from({ length: 7 }, (_, i) => (s.weekStartsOn + i) % 7);

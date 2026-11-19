@@ -1,10 +1,10 @@
 import { useEffect, useId, useState, type FormEvent, type KeyboardEvent } from "react";
 import { Cake, Plus, Trash2 } from "lucide-react";
-import { MONTHS, daysInMonth, fmtShort, isValidYmd, parseYmd, relDays, uid } from "../lib/dates.ts";
+import { MONTHS, daysInMonth, fmtShort, fmtTime, isValidYmd, parseYmd, relDays, uid } from "../lib/dates.ts";
 import { nextBirthday } from "../lib/items.ts";
 import { describeRecurrence, type Freq, type Recurrence, type Unit } from "../lib/recurrence.ts";
 import { toast } from "../lib/notify.ts";
-import { allCategories, removeItem, saveItem, useData, useSettings, type CalEvent, type Priority, type Reminder, type Task, type TaskStatus } from "../lib/store.ts";
+import { allCategories, getData, removeItem, saveItem, useData, useSettings, type CalEvent, type Priority, type Reminder, type Task, type TaskStatus } from "../lib/store.ts";
 import { Empty, Field, Modal, Switch } from "./ui.tsx";
 import "../calendar.css";
 
@@ -12,7 +12,7 @@ const DOW = ["S", "M", "T", "W", "T", "F", "S"];
 const DOW_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 /** A small set of choices as pills: one tab stop, arrow keys move and select (radio group). */
-function Choice<T extends string>({ label, value, options, onChange }: { label: string; value: T; options: { value: T; label: string }[]; onChange: (v: T) => void }) {
+function Choice<T extends string>({ label, value, options, onChange, hint }: { label: string; value: T; options: { value: T; label: string }[]; onChange: (v: T) => void; hint?: string }) {
   const id = useId();
   const at = Math.max(0, options.findIndex((o) => o.value === value));
   const keys = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -34,6 +34,7 @@ function Choice<T extends string>({ label, value, options, onChange }: { label: 
           </button>
         ))}
       </div>
+      {hint && <span className="small muted">{hint}</span>}
     </div>
   );
 }
@@ -155,13 +156,21 @@ export function TaskForm({ initial, isNew, onClose }: { initial: Task; isNew: bo
   const [t, setT] = useState<Task>(initial);
   const v = useFieldError();
   const set = (p: Partial<Task>) => (v.clear(), setT((x) => ({ ...x, ...p })));
+  // until the Start date is edited by hand it follows the Due date (when the two were the same day)
+  const [startTouched, setStartTouched] = useState(false);
+  const setDue = (dueDate: string) => (v.clear(), setT((x) => ({ ...x, dueDate, startDate: !startTouched && x.startDate === x.dueDate && isValidYmd(dueDate) ? dueDate : x.startDate })));
+  const repeats = t.recurrence.freq !== "none";
+  // a repeating task has no single "Completed" state — each occurrence is ticked on its own
+  const status: TaskStatus = repeats && t.status === "done" ? "todo" : t.status;
   const submit = (e: FormEvent) => {
     e.preventDefault();
     if (!t.title.trim()) return v.fail("title", "Give the task a title.");
     if (!isValidYmd(t.dueDate)) return v.fail("due", "Choose a valid due date.");
     if (t.startDate && t.startDate > t.dueDate) return v.fail("start", "The start date must be on or before the due date.");
-    if (!t.allDay && t.startTime && t.endTime && t.endTime < t.startTime) return v.fail("end", "The end time must be after the start time.");
-    saveItem("tasks", { ...t, title: t.title.trim(), completedAt: t.status === "done" ? t.completedAt || Date.now() : undefined });
+    if (!t.allDay && t.startTime && t.endTime && t.endTime <= t.startTime) return v.fail("end", "The end time must be after the start time.");
+    // a timed task with both times cleared has no time to show: it is saved as an all-day task
+    const untimed = !t.allDay && !t.startTime && !t.endTime;
+    saveItem("tasks", { ...t, title: t.title.trim(), status, ...(untimed ? { allDay: true, startTime: undefined, endTime: undefined } : null), completedAt: status === "done" ? t.completedAt || Date.now() : undefined });
     toast(isNew ? "Task added" : "Task updated", t.title.trim(), "ok");
     onClose();
   };
@@ -181,10 +190,10 @@ export function TaskForm({ initial, isNew, onClose }: { initial: Task; isNew: bo
         </Field>
         <div className="grid2 keep">
           <Field label="Start date" error={v.msg("start")}>
-            <input className="input" type="date" {...v.bind("start")} value={t.startDate || ""} onChange={(e) => set({ startDate: e.target.value || undefined })} />
+            <input className="input" type="date" {...v.bind("start")} value={t.startDate || ""} onChange={(e) => (setStartTouched(true), set({ startDate: e.target.value || undefined }))} />
           </Field>
           <Field label="Due date" error={v.msg("due")}>
-            <input className="input" type="date" required {...v.bind("due")} value={t.dueDate} onChange={(e) => set({ dueDate: e.target.value })} />
+            <input className="input" type="date" required {...v.bind("due")} value={t.dueDate} onChange={(e) => setDue(e.target.value)} />
           </Field>
         </div>
         <div className="switch-row">
@@ -203,7 +212,7 @@ export function TaskForm({ initial, isNew, onClose }: { initial: Task; isNew: bo
         )}
         <div className="grid2 fm-choices">
           <Choice label="Priority" value={t.priority} options={PRIORITIES} onChange={(priority) => set({ priority })} />
-          <Choice label="Status" value={t.status} options={STATUSES} onChange={(status) => set({ status })} />
+          <Choice label="Status" value={status} options={repeats ? STATUSES.filter((o) => o.value !== "done") : STATUSES} onChange={(status) => set({ status })} hint={repeats ? "A repeating task is completed one occurrence at a time: tick it in the task list or on its day." : undefined} />
         </div>
         <Choice label="Category" value={t.category} options={categoryOptions(allCategories(s), t.category)} onChange={(category) => set({ category })} />
         <RecurrenceEditor value={t.recurrence} onChange={(r) => set({ recurrence: r })} start={t.dueDate} />
@@ -218,6 +227,7 @@ export function TaskForm({ initial, isNew, onClose }: { initial: Task; isNew: bo
 const LEADS: [number, string][] = [[0, "At the scheduled time"], [5, "5 minutes before"], [10, "10 minutes before"], [15, "15 minutes before"], [30, "30 minutes before"], [60, "1 hour before"], [1440, "1 day before"]];
 
 export function ReminderForm({ initial, isNew, onClose }: { initial: Reminder; isNew: boolean; onClose: () => void }) {
+  const s = useSettings();
   const [r, setR] = useState<Reminder>(initial);
   const [custom, setCustom] = useState(!LEADS.some(([m]) => m === initial.lead));
   const v = useFieldError();
@@ -229,8 +239,11 @@ export function ReminderForm({ initial, isNew, onClose }: { initial: Reminder; i
     if (!r.time) return v.fail("time", "Choose a time.");
     // changing when it is due re-arms the notification
     const rearm = r.date !== initial.date || r.time !== initial.time || r.lead !== initial.lead;
-    saveItem("reminders", { ...r, message: r.message.trim(), fired: rearm ? [] : r.fired });
-    toast(isNew ? "Reminder set" : "Reminder updated", `${r.message.trim()} · ${fmtShort(parseYmd(r.date))} ${r.time}`, "ok");
+    // otherwise keep what has notified so far — read now, not when the form was opened, so an alert that
+    // went off while it was open is not sent a second time
+    const stored = getData().reminders.find((x) => x.id === r.id);
+    saveItem("reminders", { ...r, message: r.message.trim(), fired: rearm ? [] : stored?.fired ?? r.fired });
+    toast(isNew ? "Reminder set" : "Reminder updated", `${r.message.trim()} · ${fmtShort(parseYmd(r.date))} ${fmtTime(r.time, s.hour12)}`, "ok");
     onClose();
   };
   const del = () => {
@@ -289,8 +302,10 @@ export function EventForm({ initial, isNew, onClose }: { initial: CalEvent; isNe
     e.preventDefault();
     if (!ev.title.trim()) return v.fail("title", "Give the event a title.");
     if (!isValidYmd(ev.date)) return v.fail("date", "Choose a valid date.");
-    if (!ev.allDay && ev.startTime && ev.endTime && ev.endTime < ev.startTime) return v.fail("end", "The end time must be after the start time.");
-    saveItem("events", { ...ev, title: ev.title.trim() });
+    if (!ev.allDay && ev.startTime && ev.endTime && ev.endTime <= ev.startTime) return v.fail("end", "The end time must be after the start time.");
+    // a timed event with both times cleared has no time to show: it is saved as an all-day event
+    const untimed = !ev.allDay && !ev.startTime && !ev.endTime;
+    saveItem("events", { ...ev, title: ev.title.trim(), ...(untimed ? { allDay: true, startTime: undefined, endTime: undefined } : null) });
     toast(isNew ? "Event added" : "Event updated", ev.title.trim(), "ok");
     onClose();
   };

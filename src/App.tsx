@@ -3,9 +3,9 @@ import {
   Bell, BellOff, Cake, CalendarDays, Check, CheckCheck, CircleCheck, CloudSun, Flag, Globe2, Info, LayoutDashboard, ListTodo, MapPin, Menu, Moon, MoonStar, Newspaper, PanelLeftClose, PanelLeftOpen, Plus, Search, SearchX, Settings as SettingsIcon, Sun, Trash2, TriangleAlert, X,
 } from "lucide-react";
 import { fmt, parseYmd, startOfDay, today, ymd, type Ymd } from "./lib/dates.ts";
-import { newEvent, newReminder, newTask, search, type SearchHit } from "./lib/items.ts";
+import { newEvent, newReminder, newTask, openTaskRows, search, type SearchHit } from "./lib/items.ts";
 import { onToast, startScheduler, type Toast } from "./lib/notify.ts";
-import { initStore, removeItem, replaceCollection, saveItem, updateSettings, useData, useSettings, type CalEvent, type Reminder, type Task, type ViewName } from "./lib/store.ts";
+import { getSettings, initStore, removeItem, replaceCollection, saveItem, updateSettings, useData, useSettings, type CalEvent, type Reminder, type Task, type ViewName } from "./lib/store.ts";
 import { CalendarPage } from "./components/Calendar.tsx";
 import { DayModal } from "./components/DayModal.tsx";
 import { LOCAL_TZ, fmtZone, tzName, useNow, useTodayKey } from "./lib/clock.ts";
@@ -104,13 +104,73 @@ export default function App() {
   useEffect(() => {
     initStore();
     startScheduler();
-    const onHash = () => setRoute(routeFromHash());
+    // a page reloaded while a dialog was open still carries that dialog's history marker: drop it
+    if (history.state?.hhDialog) history.replaceState(null, "");
+    const onHash = () => {
+      hashSeen.current = location.hash;
+      setRoute(routeFromHash());
+      // the app's own navigation has already dealt with its dialogs; Back, Forward or an edited
+      // address must not leave a dialog floating over a different page
+      if (ownNav.current > 0) ownNav.current--;
+      else closeDialogs(false);
+    };
+    const onPop = () => {
+      if (location.hash !== hashSeen.current) return; // a page change: hashchange handles it
+      if (ownBack.current > 0) return void ownBack.current--;
+      const o = openNow.current;
+      if (!(o.day || o.editing || o.loc || o.more)) return;
+      // Back with a dialog open closes the dialog and stays on the page; if another dialog is
+      // still open underneath, it gets the history entry so the next Back closes that one
+      if (closeDialogs(true)) history.pushState({ hhDialog: true }, "");
+    };
     window.addEventListener("hashchange", onHash);
-    return () => window.removeEventListener("hashchange", onHash);
+    window.addEventListener("popstate", onPop);
+    return () => (window.removeEventListener("hashchange", onHash), window.removeEventListener("popstate", onPop));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── dialogs and the browser's Back button ──
+  // Opening a dialog adds one history entry at the same address, so Back closes the dialog
+  // instead of changing the page behind it. Closing it any other way removes that entry again.
+  const openNow = useRef({ day: false, editing: false, loc: false as false | "welcome" | "manual", more: false });
+  openNow.current = { day: !!day, editing: !!editing, loc: locOpen, more };
+  const hashSeen = useRef(location.hash);
+  const ownNav = useRef(0); // hash changes the app itself has started and not yet seen
+  const ownBack = useRef(0); // popstate events caused by removing our own dialog entry
+  const closeDialogs = useCallback((topOnly: boolean): boolean => {
+    const o = openNow.current;
+    setEditing(null);
+    if (topOnly && o.editing && (o.day || o.more || o.loc)) return true; // a form over another dialog: only the form
+    setDay(null);
+    setMore(false);
+    // leaving the first-visit question counts as having been asked, exactly as its own Close does
+    if (o.loc === "welcome" && !getSettings().locationPrompted) updateSettings({ locationPrompted: true });
+    setLocOpen(false);
+    return false;
+  }, []);
+  const dialogOpen = !!day || !!editing || !!locOpen || more;
+  useEffect(() => {
+    if (dialogOpen) {
+      if (!history.state?.hhDialog) history.pushState({ hhDialog: true }, "");
+    } else if (history.state?.hhDialog) {
+      ownBack.current++;
+      history.back();
+    }
+  }, [dialogOpen]);
+  /** Change the address from inside the app (the hashchange it causes is not a reason to close dialogs). */
+  const setHash = useCallback((path: string) => {
+    const target = "#" + path;
+    if (location.hash === target) return;
+    ownNav.current++;
+    if (history.state?.hhDialog) {
+      // a dialog's history entry is on top: turn it into the new page rather than stacking on it
+      history.replaceState(null, "", target);
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+    } else location.hash = path;
   }, []);
 
   const go = useCallback((r: Route) => {
-    if (location.hash !== "#/" + r) location.hash = "/" + r;
+    setHash("/" + r);
     document.getElementById("main")?.focus({ preventScroll: true });
     setRoute(r);
     setMore(false);
@@ -135,15 +195,15 @@ export default function App() {
       manageBirthdays: () => setEditing({ kind: "birthdays" }),
       openLocation: () => setLocOpen("manual"),
       readArticle: (id: string) => {
-        location.hash = "/news/a/" + id;
+        setHash("/news/a/" + id);
         window.scrollTo({ top: 0 });
       },
     }),
-    [route, focus, view, go],
+    [route, focus, view, go, setHash],
   );
 
   const newDate: Ymd = route === "calendar" ? ymd(focus) : ymd(today());
-  const openTasks = data.tasks.filter((t) => t.recurrence.freq === "none" && t.status !== "done").length;
+  const openTasks = openTaskRows(data.tasks).length; // the same rows as the Tasks page, so the badge matches "Open (N)"
   const Page = { dashboard: Dashboard, calendar: CalendarPage, world: WorldClockPage, tasks: TasksPage, reminders: RemindersPage, holidays: HolidaysPage, news: NewsPage, weather: WeatherPage, astrology: AstrologyPage, settings: SettingsPage }[route];
 
   return (
@@ -439,7 +499,8 @@ function Toasts() {
     () =>
       onToast((t) => {
         setList((l) => [...l.slice(-3), t]);
-        setTimeout(() => setList((l) => l.filter((x) => x.id !== t.id)), 4500);
+        // a toast with a button (Undo) stays long enough to be reached
+        setTimeout(() => setList((l) => l.filter((x) => x.id !== t.id)), t.action ? 9000 : 4500);
       }),
     [],
   );
@@ -452,6 +513,11 @@ function Toasts() {
             <div className="strong">{t.title}</div>
             {t.body && <div className="b">{t.body}</div>}
           </div>
+          {t.action && (
+            <button type="button" className="btn sm" style={{ flex: "none", alignSelf: "center", background: "rgba(255, 255, 255, 0.16)", color: "#fff" }} onClick={() => (t.action!.run(), setList((l) => l.filter((x) => x.id !== t.id)))}>
+              {t.action.label}
+            </button>
+          )}
         </div>
       ))}
     </div>

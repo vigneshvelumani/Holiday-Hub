@@ -6,7 +6,7 @@ import { useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type Dr
 import { Briefcase, Palmtree } from "lucide-react";
 import { useNow } from "../lib/clock.ts";
 import { fmt, fmtLong, fmtTime, isoWeek, parseYmd, sameDay, ymd, type Ymd } from "../lib/dates.ts";
-import { itemsOn, moveItem, type DayItem, type ItemFilter } from "../lib/items.ts";
+import { isRepeating, itemsOn, moveItem, type DayItem, type ItemFilter } from "../lib/items.ts";
 import { toast } from "../lib/notify.ts";
 import { SATURDAY_LABEL, officeSaturday, type SaturdayStatus } from "../lib/saturday.ts";
 import { weatherLabel, type WeatherDay } from "../lib/services.ts";
@@ -54,7 +54,7 @@ export function Pill({ item, onClick, draggable, hour12 = true, showTime = true 
       draggable={drag || undefined}
       onDragStart={drag ? dragStart(item) : undefined}
       onClick={(e) => (e.stopPropagation(), onClick?.(item))}
-      title={`${item.title} — ${item.label}${item.time ? " · " + fmtTime(item.time, hour12) : ""}${item.holiday?.note ? "\n" + item.holiday.note : ""}`}
+      title={`${item.title} — ${item.label}${item.time ? " · " + fmtTime(item.time, hour12) : ""}${item.holiday?.note ? "\n" + item.holiday.note : ""}${drag && isRepeating(item) ? "\nRepeats — open it to change its dates (it can't be dragged)" : ""}`}
     >
       <ItemIcon item={item} size={12} />
       <span className="t">
@@ -66,16 +66,19 @@ export function Pill({ item, onClick, draggable, hour12 = true, showTime = true 
   );
 }
 
-/** Drop handler shared by the grid's day columns: same payload as the month view ({ key, date }). */
-function dropMove(e: DragEvent, to: Ymd, data: DataState, s: Settings) {
+/**
+ * Drop handler shared by the week / day grid and the month view (payload: { key, date }).
+ * A one-off item moves to the day it was dropped on. A repeating item is left exactly as it is —
+ * dragging one occurrence must never shift the series or clear what was ticked — and a message says how to move it.
+ */
+export function dropMove(e: DragEvent, to: Ymd, data: DataState, s: Settings) {
   e.preventDefault();
   try {
     const src = JSON.parse(e.dataTransfer.getData("text/plain")) as { key: string; date: Ymd };
     const item = itemsOn(parseYmd(src.date), data, s).find((i) => i.key === src.key);
-    if (item && moveItem(item, to)) {
-      const series = (item.task || item.reminder || item.event)?.recurrence.freq !== "none";
-      toast(`Moved to ${fmt(parseYmd(to), { weekday: "short", day: "numeric", month: "short" })}`, series ? `${item.title} — the whole repeating series was shifted.` : item.title, "ok");
-    }
+    if (!item || item.date === to) return;
+    if (isRepeating(item)) toast("Repeating items can't be dragged", `"${item.title}" repeats, so nothing was changed. Open it and edit its date or repeat rule to move it.`, "warn");
+    else if (moveItem(item, to)) toast(`Moved to ${fmt(parseYmd(to), { weekday: "short", day: "numeric", month: "short" })}`, item.title, "ok");
   } catch {
     /* not one of ours */
   }

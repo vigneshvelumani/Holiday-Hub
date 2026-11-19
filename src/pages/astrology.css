@@ -1,6 +1,6 @@
-/* Astrology & Panchangam — v4 "mono + pastel". A black hero panel for the Moon, flat pastel tiles for
+/* Astrology & Panchangam — v4 "mono + pastel". A hero card for the Moon, flat pastel tiles for
    the five limbs and the day's periods, quiet white panels for everything else. Tokens: tokens.css.
-   The hero keeps fixed night colours (white ink on black) in both themes. */
+   The hero is a pale lilac-to-sky card with dark ink in light, and a night panel (white ink) in dark. */
 
 .as-page small { font-size: inherit; }
 .as-page { --as-r: var(--radius, 22px); --as-r-lg: var(--radius-lg, 28px); }
@@ -15,48 +15,65 @@
 .as-sub { font-size: 16px; font-weight: 800; letter-spacing: -0.02em; color: var(--ink); margin: 26px 0 12px; }
 .as-method { font-size: 13px; color: var(--ink-3); max-width: 96ch; margin: 20px 6px 0; }
 
-/* ── hero: a black panel ────────────────────────────────────────────────── */
-.as-hero { --h-bg: #0e0e11; --h-panel: #1d1d22; --h-ink-2: #c9c9d2; position: relative; overflow: hidden; border-radius: var(--as-r-lg); padding: 20px 22px 22px; color: #fff; background: var(--h-bg); }
-:root[data-theme="dark"] .as-hero { --h-bg: #17171a; --h-panel: #242429; }
-.as-hero :focus-visible { outline: 3px solid #d9f55b; outline-offset: 2px; }
+/* ── hero: a pale lilac-to-sky card in light, a night panel in dark ─────── */
+/* every hero colour is a local --h-* variable: the defaults are the light card, the dark block restores the night panel */
+.as-hero {
+  --h-bg: linear-gradient(120deg, #ebe5ff 0%, #dcebff 100%); --h-panel: #ffffff; --h-ink: #0e0e11; --h-ink-2: #3d3d46; --h-ink-3: #55555f;
+  --h-focus: #5a3fd0; --h-ctl: #ffffff; --h-ctl-ink: #0e0e11; --h-ctl-hover: #f1eefb; --h-off-bg: #f1eefb; --h-off-ink: #62626d;
+  --h-today: #0e0e11; --h-today-hover: rgba(14, 14, 17, 0.08); --h-today-on-ring: inset 0 0 0 1.5px #13150a; --h-chip-hover: #f1eefb;
+  --h-moon-dark: #6b7089; --h-moon-line: #3f4459; --h-moon-maria: #1c2033; --h-moon-lit: #fff6d6; --h-moon-lit-line: #3f4459;
+  --h-moon-sm: #6b7089; --h-moon-sm-line: #3f4459; --h-moon-sm-sw: 4; --h-moon-sm-maria: #1c2033;
+  position: relative; overflow: hidden; border-radius: var(--as-r-lg); padding: 20px 22px 22px; color: var(--h-ink); background: var(--h-bg);
+}
+:root[data-theme="dark"] .as-hero {
+  --h-bg: #17171a; --h-panel: #242429; --h-ink: #fff; --h-ink-2: #c9c9d2; --h-ink-3: #c9c9d2;
+  --h-focus: #d9f55b; --h-ctl: #fff; --h-ctl-ink: #0e0e11; --h-ctl-hover: #e4e4ea; --h-off-bg: #242429; --h-off-ink: #a9a9b4;
+  --h-today: #d9f55b; --h-today-hover: rgba(217, 245, 91, 0.16); --h-today-on-ring: none; --h-chip-hover: #2c2c33;
+  --h-moon-dark: #1c1c21; --h-moon-line: #3b3b45; --h-moon-maria: #0e0e11; --h-moon-lit: #f3ecd6; --h-moon-lit-line: none;
+  --h-moon-sm: #2c2c33; --h-moon-sm-line: #55555f; --h-moon-sm-sw: 1; --h-moon-sm-maria: #1a2240;
+}
+.as-hero :focus-visible { outline: 3px solid var(--h-focus); outline-offset: 2px; }
 .as-hero-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px 16px; flex-wrap: wrap; }
 .as-datenav { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-/* date controls: white pills; "Today" is lime — filled while today is showing, outlined when it is a way back */
-.as-hbtn { height: 40px; min-width: 40px; padding: 0; display: inline-grid; place-items: center; border-radius: var(--pill); border: 0; background: #fff; color: #0e0e11; cursor: pointer; font: inherit; font-weight: 800; font-size: 14px; transition: background-color var(--dur-1) ease, transform var(--dur-1) ease; }
-.as-hbtn:hover:not(:disabled) { background: #e4e4ea; }
+/* date controls: white pills; "Today" is filled lime while today is showing, outlined when it is a way back */
+.as-hbtn { height: 40px; min-width: 40px; padding: 0; display: inline-grid; place-items: center; border-radius: var(--pill); border: 0; background: var(--h-ctl); color: var(--h-ctl-ink); cursor: pointer; font: inherit; font-weight: 800; font-size: 14px; transition: background-color var(--dur-1) ease, transform var(--dur-1) ease; }
+.as-hbtn:hover:not(:disabled) { background: var(--h-ctl-hover); }
 .as-hbtn:active:not(:disabled) { transform: scale(0.95); }
-.as-hbtn:disabled { cursor: default; background: var(--h-panel); color: #a9a9b4; }
-.as-hbtn.text { padding: 0 18px; background: transparent; color: #d9f55b; box-shadow: inset 0 0 0 1.5px #d9f55b; }
-.as-hbtn.text:hover:not(:disabled) { background: rgba(217, 245, 91, 0.16); }
-.as-hbtn.text:disabled { background: #d9f55b; color: #13150a; box-shadow: none; }
-.as-date { height: 40px; padding: 0 16px; border-radius: var(--pill); border: 0; background: #fff; color: #0e0e11; font: inherit; font-weight: 800; font-size: 14px; font-variant-numeric: tabular-nums; color-scheme: light; min-width: 0; }
-.as-date:hover { background: #e4e4ea; }
-.as-hero .loc-chip { height: 40px; border-radius: var(--pill); padding: 0 16px; font-weight: 700; font-size: 14px; background: var(--h-panel); border: 0; color: #fff; }
-.as-hero .loc-chip .rest { color: var(--h-ink-2); }
-.as-hero .loc-chip:hover { background: #2c2c33; }
+.as-hbtn:disabled { cursor: default; background: var(--h-off-bg); color: var(--h-off-ink); }
+.as-hbtn.text { padding: 0 18px; background: transparent; color: var(--h-today); box-shadow: inset 0 0 0 1.5px var(--h-today); }
+.as-hbtn.text:hover:not(:disabled) { background: var(--h-today-hover); }
+.as-hbtn.text:disabled { background: #d9f55b; color: #13150a; box-shadow: var(--h-today-on-ring); }
+.as-date { height: 40px; padding: 0 16px; border-radius: var(--pill); border: 0; background: var(--h-ctl); color: var(--h-ctl-ink); font: inherit; font-weight: 800; font-size: 14px; font-variant-numeric: tabular-nums; color-scheme: light; min-width: 0; }
+.as-date:hover { background: var(--h-ctl-hover); }
+.as-hero .loc-chip { height: 40px; border-radius: var(--pill); padding: 0 16px; font-weight: 700; font-size: 14px; background: var(--h-panel); border: 0; color: var(--h-ink); }
+.as-hero .loc-chip .rest { color: var(--h-ink-3); }
+.as-hero .loc-chip:hover { background: var(--h-chip-hover); }
 
 .as-hero-main { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(250px, 300px); gap: 24px 44px; align-items: center; padding: 30px 10px 6px; }
 .as-hero-moon { line-height: 0; }
 .as-hero-moon svg { display: block; width: 208px; height: 208px; }
-.as-hero-moon svg > circle { fill: #1c1c21; stroke: #3b3b45; }
-.as-hero-moon svg > g { fill: #0e0e11; }
+.as-hero-moon svg > circle { fill: var(--h-moon-dark); stroke: var(--h-moon-line); }
+.as-hero-moon svg > path, .as-hero-next dt svg > path { fill: var(--h-moon-lit); stroke: var(--h-moon-lit-line); stroke-linejoin: round; }
+.as-hero-next dt svg > path { stroke-width: var(--h-moon-sm-sw); }
+.as-hero-moon svg > g { fill: var(--h-moon-maria); }
+.as-hero-next dt svg > g { fill: var(--h-moon-sm-maria); }
 .as-hero-moon path { transition: d 0.9s var(--ease) !important; }
-.as-hero-date { font-size: 14px; font-weight: 700; color: #fff; }
+.as-hero-date { font-size: 14px; font-weight: 700; color: var(--h-ink); }
 .as-hero-date span { font-weight: 500; color: var(--h-ink-2); }
 .as-hero-phase { font-size: clamp(40px, 5vw, 72px); line-height: 1; font-weight: 800; letter-spacing: -0.05em; margin-top: 10px; text-wrap: balance; }
 .as-hero-lit { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 10px; font-size: 15px; color: var(--h-ink-2); margin-top: 10px; }
-.as-hero-lit .num { font-size: 36px; line-height: 1.1; font-weight: 400; color: #fff; letter-spacing: -0.05em; }
+.as-hero-lit .num { font-size: 36px; line-height: 1.1; font-weight: 400; color: var(--h-ink); letter-spacing: -0.05em; }
 .as-hero-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 22px 0 0; }
 .as-hero-facts > div, .as-hero-next > div { background: var(--h-panel); border-radius: var(--as-r); padding: 16px 18px; min-width: 0; }
-.as-hero-facts dt, .as-hero-next dt { font-size: 13px; font-weight: 800; color: #fff; }
-.as-hero-facts dt span { font-weight: 500; margin-left: 4px; color: var(--h-ink-2); }
+.as-hero-facts dt, .as-hero-next dt { font-size: 13px; font-weight: 800; color: var(--h-ink); }
+.as-hero-facts dt span { font-weight: 500; margin-left: 4px; color: var(--h-ink-3); }
 .as-hero-facts dd { margin: 6px 0 0; font-size: 24px; font-weight: 800; letter-spacing: -0.035em; line-height: 1.15; }
-.as-hero-facts dd small { display: block; font-size: 13px; font-weight: 500; letter-spacing: 0; line-height: 1.4; color: var(--h-ink-2); margin-top: 4px; }
+.as-hero-facts dd small { display: block; font-size: 13px; font-weight: 500; letter-spacing: 0; line-height: 1.4; color: var(--h-ink-3); margin-top: 4px; }
 .as-hero-next { margin: 0; display: grid; gap: 10px; align-self: stretch; align-content: end; }
 .as-hero-next dt { display: flex; align-items: center; gap: 8px; }
-.as-hero-next dt svg > circle { fill: #2c2c33; stroke: #55555f; }
+.as-hero-next dt svg > circle { fill: var(--h-moon-sm); stroke: var(--h-moon-sm-line); stroke-width: var(--h-moon-sm-sw); }
 .as-hero-next dd { margin: 8px 0 0; font-size: 20px; font-weight: 500; letter-spacing: -0.03em; }
-.as-hero-next dd.sub { margin: 2px 0 0; font-size: 13px; font-weight: 500; letter-spacing: 0; color: var(--h-ink-2); }
+.as-hero-next dd.sub { margin: 2px 0 0; font-size: 13px; font-weight: 500; letter-spacing: 0; color: var(--h-ink-3); }
 .as-hero-empty { padding: 28px 8px 4px; color: var(--h-ink-2); }
 
 /* ── the five limbs: one flat pastel tile each ──────────────────────────── */
@@ -143,7 +160,7 @@
 .as-tl-note { font-size: 13px; color: var(--ink-3); margin: 8px 8px 0; }
 .as-periods { container: asp / inline-size; list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
 .as-periods li { --fill: var(--p-grey); --tone: var(--p-grey-ink); display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px 12px; align-content: start; padding: 16px 18px 18px; border-radius: var(--as-r); background: var(--fill); color: var(--tone); min-width: 0; }
-.as-swatch { width: 36px; height: 36px; border-radius: 12px; display: grid; place-items: center; font-size: 13px; font-weight: 800; box-shadow: inset 0 0 0 1.5px var(--tone); text-shadow: 0 0 2px var(--fill), 0 0 2px var(--fill), 0 0 3px var(--fill), 0 0 3px var(--fill); }
+.as-swatch { width: 36px; height: 36px; border-radius: 12px; display: grid; place-items: center; font-size: 13px; font-weight: 800; box-shadow: inset 0 0 0 1.5px var(--tone); }
 .as-periods .name { font-weight: 800; font-size: 15.5px; letter-spacing: -0.015em; line-height: 1.25; }
 .as-periods small { display: block; font-size: 13px; font-weight: 500; letter-spacing: 0; line-height: 1.35; }
 .as-periods .name small { margin-top: 2px; }
