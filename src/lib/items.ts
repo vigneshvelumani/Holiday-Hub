@@ -2,10 +2,10 @@
 // The office-Saturday rule is deliberately NOT part of this list: it is read
 // straight from saturday.ts by the views and cannot be influenced by any item.
 
-import { addDays, combine, dayDiff, daysInMonth, fmtTime, mkDate, parseYmd, today, uid, ymd, type Ymd } from "./dates.ts";
+import { addDays, combine, dayDiff, daysInMonth, fmtTime, mkDate, parseYmd, startOfDay, today, uid, ymd, type Ymd } from "./dates.ts";
 import { CATEGORY_LABEL, holidaysForYear, holidaysOn, primaryCategory, regionsOf, type Holiday } from "./holidays.ts";
-import { nextOccurrence, occursOn } from "./recurrence.ts";
-import { saveItem, type Birthday, type CalEvent, type DataState, type Reminder, type Settings, type Task } from "./store.ts";
+import { nextOccurrence, occursOn, prevOccurrence, type Recurrence } from "./recurrence.ts";
+import { saveItem, type Birthday, type CalEvent, type DataState, type Reminder, type Settings, type Task, type TaskStatus } from "./store.ts";
 
 export type ItemType = "holiday" | "task" | "reminder" | "event" | "birthday" | "salary";
 
@@ -42,14 +42,30 @@ export function reminderDoneOn(r: Reminder, date: Ymd): boolean {
   return r.recurrence.freq === "none" ? r.done : r.doneDates.includes(date);
 }
 
-export function toggleTask(t: Task, date: Ymd) {
+/** A task as stored, with the status it had before it was completed (so reopening can put it back). */
+type TaskMemo = Task & { prevStatus?: TaskStatus };
+
+/** The task after its checkbox is pressed for `date` — nothing is saved here. */
+export function toggledTask(t: Task, date: Ymd): Task {
   if (t.recurrence.freq === "none") {
-    const done = t.status !== "done";
-    saveItem("tasks", { ...t, status: done ? "done" : "todo", completedAt: done ? Date.now() : undefined });
-  } else {
-    const has = t.doneDates.includes(date);
-    saveItem("tasks", { ...t, doneDates: has ? t.doneDates.filter((d) => d !== date) : [...t.doneDates, date] });
+    const memo: TaskMemo = { ...t };
+    if (t.status !== "done") {
+      memo.prevStatus = t.status;
+      memo.status = "done";
+      memo.completedAt = Date.now();
+    } else {
+      // reopening restores "In progress" if that is what it was; otherwise it goes back to "To do"
+      memo.status = memo.prevStatus === "in_progress" ? "in_progress" : "todo";
+      memo.prevStatus = undefined;
+      memo.completedAt = undefined;
+    }
+    return memo;
   }
+  const has = t.doneDates.includes(date);
+  return { ...t, doneDates: has ? t.doneDates.filter((d) => d !== date) : [...t.doneDates, date] };
+}
+export function toggleTask(t: Task, date: Ymd) {
+  saveItem("tasks", toggledTask(t, date));
 }
 export function toggleReminder(r: Reminder, date: Ymd) {
   if (r.recurrence.freq === "none") saveItem("reminders", { ...r, done: !r.done });
@@ -78,6 +94,10 @@ export function nextSalary(salaryDay: number, from = today()): Date {
 }
 
 const PRIORITY_RANK = { high: 0, medium: 1, low: 2 } as const;
+
+/** A task / reminder occurrence in the shape every list and calendar draws. */
+export const taskItem = (t: Task, date: Ymd): DayItem => ({ key: "t:" + t.id, type: "task", title: t.title, tone: t.category === "Office" || t.category === "Meetings" ? "office" : "task", label: `${t.category} · ${t.priority}`, time: t.allDay ? undefined : t.startTime, done: taskDoneOn(t, date), date, task: t });
+export const reminderItem = (r: Reminder, date: Ymd): DayItem => ({ key: "r:" + r.id, type: "reminder", title: r.message, tone: "reminder", label: "Reminder", time: r.time, done: reminderDoneOn(r, date), date, reminder: r });
 
 export function itemsOn(date: Date, data: DataState, s: Settings, f: ItemFilter = {}): DayItem[] {
   const key = ymd(date);
@@ -112,13 +132,13 @@ export function itemsOn(date: Date, data: DataState, s: Settings, f: ItemFilter 
       if (!occursOn(t.recurrence, t.dueDate, date)) continue;
       if (f.taskCategory && t.category !== f.taskCategory) continue;
       if (f.priority && t.priority !== f.priority) continue;
-      out.push({ key: "t:" + t.id, type: "task", title: t.title, tone: t.category === "Office" || t.category === "Meetings" ? "office" : "task", label: `${t.category} · ${t.priority}`, time: t.allDay ? undefined : t.startTime, done: taskDoneOn(t, key), date: key, task: t });
+      out.push(taskItem(t, key));
     }
   }
   if (want("reminder") && s.layers.reminders) {
     for (const r of data.reminders) {
       if (!occursOn(r.recurrence, r.date, date)) continue;
-      out.push({ key: "r:" + r.id, type: "reminder", title: r.message, tone: "reminder", label: "Reminder", time: r.time, done: reminderDoneOn(r, key), date: key, reminder: r });
+      out.push(reminderItem(r, key));
     }
   }
   const q = f.text?.trim().toLowerCase();
@@ -143,21 +163,120 @@ export function itemsBetween(from: Date, days: number, data: DataState, s: Setti
   return out;
 }
 
+// ── list rows: one per task / reminder ───────────────────────────────────────
+// The Tasks and Reminders pages, the dashboard and the sidebar badge all read these, so their numbers agree.
+// They look at the stored items only — the calendar layer switches do not hide anything here.
+
+/**
+ * Where a repeating series stands today. The row is the latest occurrence up to today if it is still open
+ * (today's when there is one); once that is ticked, the next open occurrence. Older missed occurrences are only
+ * counted — they never come back as the row's date. A series with nothing open left is done, on its last date.
+ */
+function seriesState(rec: Recurrence, start: Ymd, doneDates: Ymd[], now: Date, handled?: (d: Ymd) => boolean): { date: Ymd; done: boolean; missed: number } {
+  const isDone = (d: Date) => doneDates.includes(ymd(d));
+  const openFrom = (from: Date): Date | null => {
+    let d = nextOccurrence(rec, start, from);
+    for (let i = 0; d && i < 400 && isDone(d); i++) d = nextOccurrence(rec, start, addDays(d, 1));
+    return d;
+  };
+  const cur = prevOccurrence(rec, start, now);
+  let at: Date;
+  let done = false;
+  if (cur && !isDone(cur)) at = (handled?.(ymd(cur)) && openFrom(addDays(cur, 1))) || cur;
+  else {
+    const next = openFrom(cur ? addDays(cur, 1) : now);
+    if (next) at = next;
+    else {
+      // nothing open: the series has ended and its last occurrence is ticked
+      at = cur ?? prevOccurrence(rec, start, addDays(now, 366 * 5)) ?? parseYmd(start);
+      done = isDone(at);
+    }
+  }
+  // occurrences missed in a row just before this one (back to the last one that was dealt with)
+  let missed = 0;
+  if (!done) {
+    let p = prevOccurrence(rec, start, addDays(at, -1));
+    while (p && missed < 999 && !isDone(p) && !handled?.(ymd(p))) {
+      missed++;
+      p = prevOccurrence(rec, start, addDays(p, -1));
+    }
+  }
+  return { date: ymd(at), done, missed };
+}
+
+export interface TaskRow {
+  t: Task;
+  /** the due date; for a repeating task, the occurrence the row stands for */
+  date: Ymd;
+  done: boolean;
+  overdue: boolean;
+  /** repeating only: earlier occurrences in a row that were never ticked */
+  missed: number;
+}
+export function taskRow(t: Task, now: Date = today()): TaskRow {
+  const key = ymd(now);
+  if (t.recurrence.freq === "none") {
+    const done = t.status === "done";
+    return { t, date: t.dueDate, done, overdue: !done && t.dueDate < key, missed: 0 };
+  }
+  const st = seriesState(t.recurrence, t.dueDate, t.doneDates, startOfDay(now));
+  return { t, ...st, overdue: !st.done && st.date < key };
+}
+export const taskRows = (tasks: Task[], now: Date = today()): TaskRow[] => tasks.map((t) => taskRow(t, now));
+/** Open tasks, most overdue first, then by date and priority. */
+export const openTaskRows = (tasks: Task[], now: Date = today()): TaskRow[] =>
+  taskRows(tasks, now)
+    .filter((r) => !r.done)
+    .sort((a, b) => a.date.localeCompare(b.date) || PRIORITY_RANK[a.t.priority] - PRIORITY_RANK[b.t.priority]);
+
+export interface ReminderRow {
+  r: Reminder;
+  date: Ymd;
+  /** the scheduled moment of this occurrence */
+  at: Date;
+  done: boolean;
+  overdue: boolean;
+  missed: number;
+}
+export function reminderRow(r: Reminder, now: Date = new Date()): ReminderRow {
+  if (r.recurrence.freq === "none") {
+    const at = combine(r.date, r.time);
+    return { r, date: r.date, at, done: r.done, overdue: !r.done && at < now, missed: 0 };
+  }
+  // a past occurrence that already notified is dealt with: the next one is what matters
+  const notified = (d: Ymd) => combine(d, r.time) < now && r.fired.includes(d);
+  const st = seriesState(r.recurrence, r.date, r.doneDates, startOfDay(now), notified);
+  const at = combine(st.date, r.time);
+  return { r, ...st, at, overdue: !st.done && at < now };
+}
+export const reminderRows = (reminders: Reminder[], now: Date = new Date()): ReminderRow[] => reminders.map((r) => reminderRow(r, now));
+/** Open reminders, overdue ones first, then in time order. */
+export const openReminderRows = (reminders: Reminder[], now: Date = new Date()): ReminderRow[] =>
+  reminderRows(reminders, now)
+    .filter((x) => !x.done)
+    .sort((a, b) => a.at.getTime() - b.at.getTime());
+
 export const timeLabel = (i: DayItem, hour12: boolean) => (i.time ? fmtTime(i.time, hour12) : "");
 
 // ── moving things (drag & drop) ──────────────────────────────────────────────
-/** Reschedule a user item to another day. Holidays, salary day and the Saturday rule are not movable. */
+export const isRepeating = (item: DayItem): boolean => ((item.task || item.reminder || item.event)?.recurrence.freq ?? "none") !== "none";
+
+/**
+ * Reschedule a user item to another day. Holidays, salary day and the Saturday rule are not movable.
+ * A repeating item is refused: moving one occurrence would shift the whole series and wipe its history,
+ * so its dates are changed by editing it instead.
+ */
 export function moveItem(item: DayItem, to: Ymd): boolean {
-  if (item.date === to) return false;
+  if (item.date === to || isRepeating(item)) return false;
   const shift = dayDiff(parseYmd(item.date), parseYmd(to));
   const move = (k: Ymd) => ymd(addDays(parseYmd(k), shift));
   if (item.task) {
     const t = item.task;
-    saveItem("tasks", { ...t, dueDate: move(t.dueDate), startDate: t.startDate ? move(t.startDate) : undefined, doneDates: [] });
+    saveItem("tasks", { ...t, dueDate: move(t.dueDate), startDate: t.startDate ? move(t.startDate) : undefined });
     return true;
   }
   if (item.reminder) {
-    saveItem("reminders", { ...item.reminder, date: move(item.reminder.date), fired: [], doneDates: [] });
+    saveItem("reminders", { ...item.reminder, date: move(item.reminder.date), fired: [] });
     return true;
   }
   if (item.event) {
@@ -178,10 +297,36 @@ export interface SearchHit {
 }
 
 const MONTH_ALIASES = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+const MONTH_NAMES = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+/** "dec", "sept", "december" → 11; anything that is not the start of a month name → -1. */
+const monthIndex = (word: string) => (word.length < 3 ? -1 : MONTH_NAMES.findIndex((m) => m.startsWith(word)));
 
-/** "2027-03-14", "14 Mar 2027", "March 2030", "2031" → a date to jump to. */
-export function parseDateQuery(q: string): Date | null {
+/**
+ * "2027-03-14", "14 Mar 2027", "March 2030", "2031" → a date to jump to.
+ * Without a year ("25 dec", "dec 25", "december") it is the next such date from `now` (today counts).
+ */
+export function parseDateQuery(q: string, now: Date = today()): Date | null {
   const s = q.trim().toLowerCase();
+  const dayMonth = s.match(/^(\d{1,2})(?:st|nd|rd|th)?\s+([a-z]{3,})\.?$/);
+  const monthDay = s.match(/^([a-z]{3,})\.?\s+(\d{1,2})(?:st|nd|rd|th)?$/);
+  if (dayMonth || monthDay) {
+    const mi = monthIndex(dayMonth ? dayMonth[2] : monthDay![1]);
+    const day = +(dayMonth ? dayMonth[1] : monthDay![2]);
+    if (mi < 0) return null;
+    // up to 8 years ahead, so 29 Feb finds its next leap year
+    for (let y = now.getFullYear(); y <= now.getFullYear() + 8; y++) {
+      const d = validDate(y, mi, day);
+      if (d && dayDiff(now, d) >= 0) return d;
+    }
+    return null;
+  }
+  const monthOnly = s.match(/^([a-z]{3,})\.?$/);
+  if (monthOnly) {
+    const mi = monthIndex(monthOnly[1]);
+    if (mi < 0) return null;
+    // the month in progress counts as the next one
+    return validDate(now.getFullYear() + (mi < now.getMonth() ? 1 : 0), mi, 1);
+  }
   let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
   if (m) return validDate(+m[1], +m[2] - 1, +m[3]);
   m = s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/);

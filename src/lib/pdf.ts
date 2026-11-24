@@ -1,7 +1,7 @@
 // "Export month as PDF" — carried over from the original site, now including
 // reminders and the office Saturday schedule. jsPDF is loaded only when used.
 
-import { addDays, daysInMonth, fmt, mkDate, ymd } from "./dates.ts";
+import { addDays, daysInMonth, fmt, fmtTime, mkDate, ymd } from "./dates.ts";
 import { CATEGORY_LABEL, primaryCategory } from "./holidays.ts";
 import { enabledCategories, itemsOn } from "./items.ts";
 import { bankSaturday, officeSaturday } from "./saturday.ts";
@@ -69,7 +69,7 @@ export async function exportMonthPdf(month: Date, data: DataState, s: Settings):
 
   const section = (title: string, type: string, none: string) => {
     heading(title);
-    const rows = perDay.flatMap((p) => p.items.filter((i) => i.type === type).map((i) => `${dl(p.d)}  ·  ${i.done ? "[x] " : type === "task" ? "[ ] " : ""}${i.time ? i.time + "  " : ""}${i.title}${i.task ? `  (${i.task.category}, ${i.task.priority})` : ""}`));
+    const rows = perDay.flatMap((p) => p.items.filter((i) => i.type === type).map((i) => `${dl(p.d)}  ·  ${i.done ? "[x] " : type === "task" ? "[ ] " : ""}${i.time ? fmtTime(i.time, s.hour12) + "  " : ""}${i.title}${i.task ? `  (${i.task.category}, ${i.task.priority})` : ""}`));
     rows.length ? rows.forEach(line) : empty(none);
   };
   section("Tasks", "task", "No tasks this month.");

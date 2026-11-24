@@ -1,9 +1,10 @@
 import "./settings.css";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { BellRing, LayoutDashboard, MapPin, Palette, ShieldCheck, SlidersHorizontal, Tags, X, type LucideIcon } from "lucide-react";
+import { BellRing, Download, LayoutDashboard, MapPin, Palette, ShieldCheck, SlidersHorizontal, Tags, Upload, X, type LucideIcon } from "lucide-react";
 import { LOCAL_TZ, hereName, tzLabel } from "../lib/clock.ts";
-import { notificationPermission, notify, requestNotificationPermission } from "../lib/notify.ts";
-import { TASK_CATEGORIES, updateSettings, useSettings, type Settings, type ViewName } from "../lib/store.ts";
+import { today, ymd } from "../lib/dates.ts";
+import { notificationPermission, notify, requestNotificationPermission, toast } from "../lib/notify.ts";
+import { TASK_CATEGORIES, applyBackup, clearAllData, exportData, parseBackup, resetSettings, updateSettings, useData, useSettings, type Backup, type Settings, type StoreName, type ViewName } from "../lib/store.ts";
 import { Seg, Switch, useUi } from "../components/ui.tsx";
 
 export { NewsPage } from "./News.tsx";
@@ -43,6 +44,42 @@ function Section({ id, title, note, children }: { id: string; title: string; not
   );
 }
 
+/**
+ * A whole-number field that can be cleared and retyped. The text being typed is kept locally and
+ * only saved once it is a number inside the range; leaving the field snaps it back to the saved value.
+ */
+function NumField({ value, min, max, onCommit, label, title }: { value: number; min: number; max: number; onCommit: (n: number) => void; label: string; title?: string }) {
+  const [text, setText] = useState(String(value));
+  const editing = useRef(false);
+  useEffect(() => {
+    if (!editing.current) setText(String(value));
+  }, [value]);
+  return (
+    <input
+      className="input num st-w-xs"
+      type="number"
+      inputMode="numeric"
+      min={min}
+      max={max}
+      step={1}
+      value={text}
+      aria-label={label}
+      title={title ?? `${min} to ${max}`}
+      onFocus={() => (editing.current = true)}
+      onChange={(e) => {
+        const t = e.target.value;
+        setText(t);
+        const n = Number(t);
+        if (t.trim() !== "" && Number.isInteger(n) && n >= min && n <= max) onCommit(n);
+      }}
+      onBlur={() => {
+        editing.current = false;
+        setText(String(value));
+      }}
+    />
+  );
+}
+
 function Row({ title, desc, children }: { title: string; desc: ReactNode; children: ReactNode }) {
   return (
     <div className="st-row">
@@ -52,6 +89,118 @@ function Row({ title, desc, children }: { title: string; desc: ReactNode; childr
       </div>
       <div className="st-row-ctl">{children}</div>
     </div>
+  );
+}
+
+/**
+ * A destructive action in two steps, in place: the first press only asks; the answer is given
+ * right here, with Cancel focused. Escape cancels.
+ */
+function ConfirmAction({ label, warning, confirmLabel, onConfirm }: { label: string; warning: string; confirmLabel: string; onConfirm: () => void }) {
+  const [asking, setAsking] = useState(false);
+  const opener = useRef<HTMLButtonElement>(null);
+  const cancel = useRef<HTMLButtonElement>(null);
+  const wasAsking = useRef(false);
+  useEffect(() => {
+    if (asking) cancel.current?.focus();
+    else if (wasAsking.current) opener.current?.focus();
+    wasAsking.current = asking;
+  }, [asking]);
+  if (!asking) return <button type="button" className="btn st-warn" ref={opener} onClick={() => setAsking(true)}>{label}</button>;
+  return (
+    <span className="st-confirm" role="group" aria-label={`Confirm: ${label}`} onKeyDown={(e) => e.key === "Escape" && (e.stopPropagation(), setAsking(false))}>
+      <span className="st-confirm-text" role="alert">{warning}</span>
+      <button type="button" className="btn" ref={cancel} onClick={() => setAsking(false)}>Cancel</button>
+      <button type="button" className="btn danger st-danger" onClick={() => (setAsking(false), onConfirm())}>{confirmLabel}</button>
+    </span>
+  );
+}
+
+const DATA_LABEL: [StoreName, string, string][] = [
+  ["tasks", "task", "tasks"], ["reminders", "reminder", "reminders"], ["events", "event", "events"], ["notes", "note", "notes"],
+  ["moods", "mood", "moods"], ["birthdays", "birthday", "birthdays"], ["notifications", "notification", "notifications"], ["bookmarks", "saved article", "saved articles"],
+];
+/** "3 tasks, 1 reminder and 2 notes" — only what is actually there. */
+function countText(counts: Record<StoreName, number>): string {
+  const parts = DATA_LABEL.filter(([k]) => counts[k] > 0).map(([k, one, many]) => `${counts[k]} ${counts[k] === 1 ? one : many}`);
+  return parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}` : parts[0] || "";
+}
+const MAX_BACKUP_BYTES = 20 * 1024 * 1024;
+
+/** Backup, restore and erase — all of it inside this browser; no file or value leaves the device. */
+function DataRows() {
+  const data = useData();
+  const picker = useRef<HTMLInputElement>(null);
+  const [error, setError] = useState("");
+  const [pending, setPending] = useState<{ name: string; backup: Backup } | null>(null);
+  const counts = Object.fromEntries(DATA_LABEL.map(([k]) => [k, data[k].length])) as Record<StoreName, number>;
+  const have = countText(counts);
+
+  const exportBackup = () => {
+    const name = `holiday-hub-backup-${ymd(today())}.json`;
+    const url = URL.createObjectURL(new Blob([exportData()], { type: "application/json" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    toast("Backup saved to your downloads", name, "ok");
+  };
+  const choose = async (file: File | undefined) => {
+    setError("");
+    setPending(null);
+    if (!file) return;
+    try {
+      if (file.size > MAX_BACKUP_BYTES) throw new Error("This file is too large to be a Holiday Hub backup.");
+      setPending({ name: file.name, backup: parseBackup(await file.text()) });
+    } catch (e) {
+      setError((e as Error).message || "This file couldn't be read.");
+    }
+  };
+  const restore = () => {
+    if (!pending) return;
+    applyBackup(pending.backup);
+    toast("Backup restored", pending.name, "ok");
+    setPending(null);
+  };
+  const inFile = pending ? [countText(pending.backup.counts), pending.backup.settings ? "your settings" : ""].filter(Boolean).join(", plus ") || "no records" : "";
+  const exported = pending?.backup.exportedAt ? new Date(pending.backup.exportedAt).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "";
+
+  return (
+    <>
+      <Row title="Export backup" desc="Downloads everything you have added, and your settings, as one file on this device. Nothing is uploaded.">
+        <button type="button" className="btn" onClick={exportBackup}><Download size={14} aria-hidden /> Export backup</button>
+      </Row>
+      <Row
+        title="Import backup"
+        desc={
+          <>
+            Restores from a file exported here. The file is checked before anything changes; what it contains then replaces what is in this browser.
+            {error && <span className="st-msg err" role="alert">{error} Nothing was changed.</span>}
+            {pending && <span className="st-msg" role="status">{pending.name}{exported ? ` (exported ${exported})` : ""} contains {inFile}.</span>}
+          </>
+        }
+      >
+        <input ref={picker} type="file" accept="application/json,.json" hidden aria-label="Backup file" onChange={(e) => (void choose(e.target.files?.[0]), (e.target.value = ""))} />
+        {pending ? (
+          <span className="st-confirm" role="group" aria-label="Confirm: Import backup">
+            <span className="st-confirm-text">Replacing can't be undone.</span>
+            <button type="button" className="btn" onClick={() => setPending(null)}>Cancel</button>
+            <button type="button" className="btn danger st-danger" onClick={restore}>Replace with this backup</button>
+          </span>
+        ) : (
+          <button type="button" className="btn" onClick={() => picker.current?.click()}><Upload size={14} aria-hidden /> Import backup</button>
+        )}
+      </Row>
+      <Row title="Clear all data" desc={`Deletes everything you have added in this browser${have ? ` — ${have}` : " (there is nothing stored right now)"}. Your settings are kept.`}>
+        <ConfirmAction label="Clear all data" warning="Everything you added will be deleted. This can't be undone." confirmLabel="Yes, delete everything" onConfirm={() => (clearAllData(), toast("All data cleared", "Your settings were kept.", "ok"))} />
+      </Row>
+      <Row title="Reset settings" desc="Returns every preference on this page to how it started, including the location, world clocks and your own categories. What you have added is kept.">
+        <ConfirmAction label="Reset settings" warning="All preferences go back to their defaults. This can't be undone." confirmLabel="Yes, reset settings" onConfirm={() => (resetSettings(), toast("Settings reset", "Preferences are back to their defaults.", "ok"))} />
+      </Row>
+    </>
   );
 }
 
@@ -72,7 +221,7 @@ export function SettingsPage() {
       let cur = SECTIONS[0].id;
       for (const x of SECTIONS) {
         const el = document.getElementById(`st-${x.id}`);
-        if (el && el.getBoundingClientRect().top <= 150) cur = x.id;
+        if (el && el.getBoundingClientRect().top <= 190) cur = x.id;
       }
       if (window.scrollY > 0 && window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4) cur = SECTIONS[SECTIONS.length - 1].id;
       setActive(cur);
@@ -101,6 +250,11 @@ export function SettingsPage() {
     const reduce = typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches;
     pinned.current = id;
     setActive(id);
+    // on phones the list is a sideways-scrolling strip: centre the chosen chip in it. Only the strip
+    // is scrolled (a second scrollIntoView would cancel the page's own smooth scroll below).
+    const chip = document.querySelector<HTMLElement>(`.st-nav [data-sec="${id}"]`);
+    const strip = chip?.closest("ul");
+    if (chip && strip && strip.scrollWidth > strip.clientWidth) strip.scrollLeft = chip.offsetLeft - strip.offsetLeft - (strip.clientWidth - chip.offsetWidth) / 2;
     document.getElementById(`st-${id}`)?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
     document.getElementById(`st-h-${id}`)?.focus({ preventScroll: true });
   };
@@ -125,7 +279,7 @@ export function SettingsPage() {
           <ul>
             {SECTIONS.map(({ id, label, icon: Icon }) => (
               <li key={id}>
-                <button type="button" aria-current={active === id ? "true" : undefined} onClick={() => jump(id)}>
+                <button type="button" data-sec={id} aria-current={active === id ? "true" : undefined} onClick={() => jump(id)}>
                   <Icon size={16} aria-hidden /> {label}
                 </button>
               </li>
@@ -159,7 +313,7 @@ export function SettingsPage() {
               <Seg value={s.tempUnit} onChange={(v) => set({ tempUnit: v })} label="Temperature unit" options={[{ value: "C", label: "°C" }, { value: "F", label: "°F" }]} />
             </Row>
             <Row title="Salary day" desc="Day of the month shown as salary day (shorter months use their last day).">
-              <input className="input num st-w-xs" type="number" min={1} max={31} value={s.salaryDay} onChange={(e) => set({ salaryDay: Math.max(1, Math.min(31, Math.floor(+e.target.value) || 1)) })} aria-label="Salary day" />
+              <NumField value={s.salaryDay} min={1} max={31} onCommit={(n) => set({ salaryDay: n })} label="Salary day" title="A day of the month, 1 to 31" />
             </Row>
             <Row title="Your time zone" desc="Taken from this device. Calendar dates and reminders follow it.">
               <span className="st-value">{hereName(s.location)}<small>{tzLabel(LOCAL_TZ)}</small></span>
@@ -180,17 +334,17 @@ export function SettingsPage() {
             </Row>
             <Row title="Salary day alert" desc="On salary day and a few days before.">
               <label className="st-mini"><span>At</span><input className="input st-w-time" type="time" value={s.notify.salaryTime} onChange={(e) => setNotify({ salaryTime: e.target.value || "09:00" })} aria-label="Salary alert time" /></label>
-              <label className="st-mini"><span>Days before</span><input className="input num st-w-xs" type="number" min={0} max={7} value={s.notify.salaryLead} onChange={(e) => setNotify({ salaryLead: Math.max(0, Math.min(7, +e.target.value || 0)) })} aria-label="Days before salary day" title="Days before" /></label>
+              <label className="st-mini"><span>Days before</span><NumField value={s.notify.salaryLead} min={0} max={7} onCommit={(n) => setNotify({ salaryLead: n })} label="Days before salary day" title="Days before: 0 to 7" /></label>
               <Switch checked={s.notify.salary} onChange={(v) => setNotify({ salary: v })} label="Salary alerts" />
             </Row>
             <Row title="Birthday alert" desc="On the day and a number of days before.">
               <label className="st-mini"><span>At</span><input className="input st-w-time" type="time" value={s.notify.birthdayTime} onChange={(e) => setNotify({ birthdayTime: e.target.value || "09:00" })} aria-label="Birthday alert time" /></label>
-              <label className="st-mini"><span>Days before</span><input className="input num st-w-xs" type="number" min={0} max={30} value={s.notify.birthdayLead} onChange={(e) => setNotify({ birthdayLead: Math.max(0, Math.min(30, +e.target.value || 0)) })} aria-label="Days before birthday" title="Days before" /></label>
+              <label className="st-mini"><span>Days before</span><NumField value={s.notify.birthdayLead} min={0} max={30} onCommit={(n) => setNotify({ birthdayLead: n })} label="Days before birthday" title="Days before: 0 to 30" /></label>
               <Switch checked={s.notify.birthday} onChange={(v) => setNotify({ birthday: v })} label="Birthday alerts" />
             </Row>
             <Row title="Event alert" desc="For your events, on the day or a number of days before.">
               <label className="st-mini"><span>At</span><input className="input st-w-time" type="time" value={s.notify.eventTime} onChange={(e) => setNotify({ eventTime: e.target.value || "09:00" })} aria-label="Event alert time" /></label>
-              <label className="st-mini"><span>Days before</span><input className="input num st-w-xs" type="number" min={0} max={14} value={s.notify.eventLead} onChange={(e) => setNotify({ eventLead: Math.max(0, Math.min(14, +e.target.value || 0)) })} aria-label="Days before event" title="Days before" /></label>
+              <label className="st-mini"><span>Days before</span><NumField value={s.notify.eventLead} min={0} max={14} onCommit={(n) => setNotify({ eventLead: n })} label="Days before event" title="Days before: 0 to 14" /></label>
               <Switch checked={s.notify.events} onChange={(v) => setNotify({ events: v })} label="Event alerts" />
             </Row>
           </Section>
@@ -226,6 +380,7 @@ export function SettingsPage() {
             <p className="st-note">
               Your tasks, reminders, events, birthdays and these preferences are kept only in this browser's own storage. There are no accounts and none of it is uploaded; it stays until you clear this site's browser data. Weather, news and the horoscope are fetched from external services, and for weather your location's coordinates are sent to them.
             </p>
+            <DataRows />
           </Section>
         </div>
       </div>

@@ -1,12 +1,13 @@
 import { useMemo, useRef, useState, type DragEvent, type KeyboardEvent } from "react";
-import { Landmark } from "lucide-react";
-import { fmt, fmtLong, fmtMonthYear, monthGrid, parseYmd, sameDay, today, ymd, type Ymd } from "../lib/dates.ts";
-import { itemsOn, moveItem, type ItemFilter } from "../lib/items.ts";
-import { toast } from "../lib/notify.ts";
+import { Landmark, StickyNote } from "lucide-react";
+import { fmtLong, fmtMonthYear, monthGrid, sameDay, today, ymd, type Ymd } from "../lib/dates.ts";
+import { itemsOn, type ItemFilter } from "../lib/items.ts";
 import { SATURDAY_LABEL, bankSaturday, officeSaturday } from "../lib/saturday.ts";
 import { weatherLabel, type WeatherDay } from "../lib/services.ts";
 import type { DataState, Settings } from "../lib/store.ts";
-import { ItemChip, ItemDot, MOODS, SatTag, WeatherIcon, tone, useItemClick } from "./ui.tsx";
+import { ItemDot, MOODS, WeatherIcon, tone, useItemClick } from "./ui.tsx";
+import { Pill, SatChip, dropMove } from "./WeekGrid.tsx";
+import "../calendar.css";
 
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const DOW_LONG = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -29,7 +30,7 @@ export function MonthView({ focus, selected, onSelect, data, s, filter, weather,
   // slide in from the side the user navigated towards
   const monthIndex = focus.getFullYear() * 12 + focus.getMonth();
   const prev = useRef(monthIndex);
-  const dir = monthIndex > prev.current ? "slide-next" : monthIndex < prev.current ? "slide-prev" : "anim";
+  const dir = monthIndex > prev.current ? "mv-next" : monthIndex < prev.current ? "mv-prev" : "mv-in";
   const dirRef = useRef(dir);
   if (monthIndex !== prev.current) (dirRef.current = dir), (prev.current = monthIndex);
 
@@ -47,26 +48,16 @@ export function MonthView({ focus, selected, onSelect, data, s, filter, weather,
   };
 
   const drop = (e: DragEvent, key: Ymd) => {
-    e.preventDefault();
     setDropKey(null);
-    try {
-      const src = JSON.parse(e.dataTransfer.getData("text/plain")) as { key: string; date: Ymd };
-      const item = itemsOn(parseYmd(src.date), data, s).find((i) => i.key === src.key);
-      if (item && moveItem(item, key)) {
-        const series = (item.task || item.reminder || item.event)?.recurrence.freq !== "none";
-        toast(`Moved to ${fmt(parseYmd(key), { weekday: "short", day: "numeric", month: "short" })}`, series ? `${item.title} — the whole repeating series was shifted.` : item.title, "ok");
-      }
-    } catch {
-      /* not one of ours */
-    }
+    dropMove(e, key, data, s); // one-off items move; a repeating item is left alone and a message says why
   };
 
   const order = Array.from({ length: 7 }, (_, i) => (s.weekStartsOn + i) % 7);
   return (
-    <div className={"month " + dirRef.current} role="grid" aria-label={`${fmtMonthYear(focus)}. Use the arrow keys to move between days.`} ref={grid} key={monthIndex}>
+    <div className={"mv " + dirRef.current} role="grid" aria-label={`${fmtMonthYear(focus)}. Use the arrow keys to move between days.`} ref={grid} key={monthIndex}>
       <div role="row" style={{ display: "contents" }}>
         {order.map((d) => (
-          <div key={d} className={"dow" + (d === 0 ? " sun" : "")} role="columnheader" aria-label={DOW_LONG[d]}>
+          <div key={d} className="mv-dow" role="columnheader" aria-label={DOW_LONG[d]}>
             {DOW[d]}
           </div>
         ))}
@@ -92,8 +83,7 @@ export function MonthView({ focus, selected, onSelect, data, s, filter, weather,
                 tabIndex={i === tabStop ? 0 : -1}
                 aria-current={isToday ? "date" : undefined}
                 aria-selected={!!selected && sameDay(d, selected)}
-                className={`cell ${out ? "out" : ""} ${isToday ? "is-today" : ""} ${selected && sameDay(d, selected) ? "sel" : ""} ${dropKey === key ? "drop" : ""} ${sat === "working" ? "sat-working" : sat === "off" ? "sat-off" : ""}`}
-                style={{ animationDelay: `${(col + week) * 14}ms` }}
+                className={`mv-cell${out ? " out" : ""}${isToday ? " is-today" : ""}${selected && sameDay(d, selected) ? " sel" : ""}${dropKey === key ? " drop" : ""}${col === 0 ? " c0" : ""}`}
                 aria-label={said}
                 onClick={() => onSelect(d)}
                 onKeyDown={(e) => {
@@ -105,35 +95,41 @@ export function MonthView({ focus, selected, onSelect, data, s, filter, weather,
                 onDragLeave={() => setDropKey((k) => (k === key ? null : k))}
                 onDrop={(e) => drop(e, key)}
               >
-                <div className="cell-top">
-                  <span className={`daynum ${isToday ? "today" : d.getDay() === 0 ? "sun" : ""}`}>{d.getDate()}</span>
-                  <span className="cell-meta">
-                    {mood && (() => { const M = MOODS.find((m) => m.value === mood); return M ? <M.Icon size={13} aria-label={`Mood: ${M.label}`} /> : null; })()}
-                    {noteDays.has(key) && s.layers.notes && <span className="dot" style={tone("ink")} title="Has a note" />}
+                <div className="mv-top">
+                  <span className={"mv-num num" + (isToday ? " today" : "")}>{d.getDate()}</span>
+                  {isToday && <span className="today-label">Today</span>}
+                  <span className="mv-meta">
+                    {mood && (() => { const M = MOODS.find((m) => m.value === mood); return M ? <M.Icon size={14} aria-label={`Mood: ${M.label}`} /> : null; })()}
+                    {noteDays.has(key) && s.layers.notes && <StickyNote size={13} aria-label="Has a note" />}
                     {w && (
-                      <span className="row num" style={{ gap: 2 }} title={`${weatherLabel(w.code)}, ${Math.round(w.tmax)}° / ${Math.round(w.tmin)}°`}>
-                        <WeatherIcon code={w.code} size={12} />
+                      <span className="mv-wx num" title={`${weatherLabel(w.code)}, ${Math.round(w.tmax)}° / ${Math.round(w.tmin)}°`}>
+                        <WeatherIcon code={w.code} size={13} />
                         {Math.round(w.tmax)}°
                       </span>
                     )}
                   </span>
                 </div>
-                {isToday && <span className="today-label">Today</span>}
-                {bank && (
-                  <span className="bankline" title="Bank Saturday rule: 2nd and 4th Saturdays are bank holidays">
-                    <Landmark size={10} /> Banks {bank}
-                  </span>
-                )}
-                {items.slice(0, max).map((it) => (
-                  <ItemChip key={it.key} item={it} onClick={onItem} draggable hour12={s.hour12} showTime={false} />
-                ))}
-                {items.length > max && <span className="more">+{items.length - max} more</span>}
-                {sat && <span className="cell-sat"><SatTag status={sat} size="cell" /></span>}
-                <div className="cell-dots">
+                <div className="mv-items">
+                  {items.slice(0, max).map((it) => (
+                    <Pill key={it.key} item={it} onClick={onItem} draggable hour12={s.hour12} showTime={false} />
+                  ))}
+                  {items.length > max && <span className="hb-more">+{items.length - max} more</span>}
+                </div>
+                <div className="mv-dots" aria-hidden>
                   {items.slice(0, 4).map((it) => (
                     <ItemDot key={it.key} item={it} />
                   ))}
                 </div>
+                {(sat || bank) && (
+                  <div className="mv-foot">
+                    {sat && <SatChip status={sat} form="cell" />}
+                    {bank && (
+                      <span className="mv-bank" title="Bank Saturday rule: 2nd and 4th Saturdays are bank holidays">
+                        <Landmark size={11} aria-hidden /> Banks {bank}
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })}

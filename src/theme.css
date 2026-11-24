@@ -76,7 +76,6 @@ h2.card-title, h3.card-title { margin: 0; font-weight: 600; }
 .cell { transition: background-color 0.16s ease, transform 0.2s var(--ease), box-shadow 0.2s ease; }
 .cell:not(.out):hover { transform: translateY(-2px); box-shadow: var(--shadow-lift); z-index: 2; }
 .mini-day.today { background: var(--today); color: var(--today-ink); }
-.week-head.today { background: var(--today-soft); box-shadow: inset 0 4px 0 var(--today); }
 .month.slide-next .cell { animation: cell-next 0.38s var(--ease) both; }
 .month.slide-prev .cell { animation: cell-prev 0.38s var(--ease) both; }
 @keyframes cell-next { from { opacity: 0; transform: translateX(22px); } to { opacity: 1; transform: none; } }
@@ -92,7 +91,6 @@ h2.card-title, h3.card-title { margin: 0; font-weight: 600; }
 .scene canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 /* text sits at both edges, so both edges are darkened; the middle stays open for the sky */
 .scene-scrim { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(5, 12, 22, 0.62), rgba(5, 12, 22, 0.26) 38%, rgba(5, 12, 22, 0.2) 58%, rgba(5, 12, 22, 0.56)), linear-gradient(0deg, rgba(5, 12, 22, 0.5), transparent 46%); }
-.scene-content { text-shadow: 0 1px 2px rgba(5, 12, 22, 0.45); }
 .cell.is-today .cell-meta .row { display: none; }
 .scene-content { position: relative; z-index: 1; height: 100%; }
 .scene-idle { background: linear-gradient(150deg, #2c3945, #56636f); }
@@ -105,7 +103,7 @@ h2.card-title, h3.card-title { margin: 0; font-weight: 600; }
 /* ── dashboard masthead ── */
 .mast { border-radius: 14px; min-height: 300px; box-shadow: var(--shadow-lift); }
 .mast-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 24px; padding: 28px 32px 22px; min-height: 300px; align-content: space-between; }
-.mast-day { font-family: var(--display); font-size: 132px; line-height: 0.8; font-weight: 500; letter-spacing: -0.04em; text-shadow: 0 6px 30px rgba(0, 0, 0, 0.25); }
+.mast-day { font-family: var(--display); font-size: 132px; line-height: 0.8; font-weight: 500; letter-spacing: -0.04em; }
 .mast-date h1 { font-family: var(--display); font-size: 40px; font-weight: 500; line-height: 1.05; letter-spacing: -0.01em; }
 .mast-clock { font-family: var(--display); font-size: 34px; font-variant-numeric: tabular-nums; line-height: 1; margin-top: 12px; }
 .mast-wx { text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
@@ -189,7 +187,7 @@ h2.card-title, h3.card-title { margin: 0; font-weight: 600; }
 .cycle { display: grid; grid-template-columns: repeat(15, minmax(0, 1fr)); gap: 8px 4px; }
 .cycle button { border: 0; background: none; padding: 4px 0; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 3px; border-radius: 6px; font-size: 11px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
 .cycle button:hover { background: var(--surface-2); }
-.cycle button.cur { background: var(--today-soft); color: var(--today); font-weight: 700; box-shadow: inset 0 -3px 0 var(--today); }
+.cycle button.cur { background: var(--today-soft); color: var(--ink); font-weight: 700; box-shadow: inset 0 -3px 0 var(--today); }
 .wheel { width: 100%; max-width: 420px; display: block; margin: 0 auto; }
 .wheel .ring { fill: none; stroke: var(--line-strong); }
 .wheel .sector { stroke: var(--line); fill: var(--surface); }

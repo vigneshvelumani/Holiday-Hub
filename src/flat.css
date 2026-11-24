@@ -1,0 +1,39 @@
+/* Holiday Hub — the flat pass (loaded last).
+   One rule for the whole app: a surface is told apart by its FILL, never by an outline or a drop
+   shadow. Outlines are kept only where they carry meaning (form fields, a selected or "off" state,
+   focus). Shadows are kept only under things that float above the page (menus, dialogs, toasts).
+   There is no text-shadow anywhere. */
+
+:root, :root[data-theme="dark"] {
+  --shadow: none;
+  --shadow-lift: none;
+  --tint: color-mix(in srgb, var(--ink) 7%, transparent);
+  --tint-2: color-mix(in srgb, var(--ink) 13%, transparent);
+}
+
+/* ── controls: tinted fills instead of outlined pills ───────────────────────── */
+.btn:not(.primary):not(.ghost):not(.danger):not(.glass):not(.hb-btn) { border-color: transparent; background: var(--tint); }
+.btn:not(.primary):not(.ghost):not(.danger):not(.glass):not(.hb-btn):hover { border-color: transparent; background: var(--tint-2); }
+.nav-btn, .nav-btn:hover { border-color: transparent; }
+.nav-btn { background: var(--tint); }
+.nav-btn:hover { background: var(--tint-2); }
+.seg button[aria-pressed="true"] { box-shadow: none; }
+.card { border-color: transparent; }
+
+/* top bar: white pills on the wash, no outline in either theme */
+.topbar, :root[data-theme="dark"] .topbar, .topbar.scrolled { --tb-line: transparent; }
+.topbar .btn.ghost:hover, .topbar .loc-chip:hover { border-color: transparent; background: color-mix(in srgb, var(--surface) 86%, var(--ink)); }
+.topbar .btn.ghost[aria-current="page"], .topbar .btn.ghost[aria-expanded="true"] { background: var(--btn); color: var(--btn-ink); }
+
+/* hover on a tile is a change of tone, not a lift with a shadow */
+.ds-tile:hover, .sat-card2:hover { transform: none; box-shadow: none; filter: brightness(0.965); }
+:root[data-theme="dark"] :is(.ds-tile, .sat-card2):hover { filter: brightness(1.08); }
+
+/* dashboard weather card (light, day): tinted pills, no outline */
+:root[data-theme="light"] .dash-page .wx-card[data-night="false"] :is(.wx-top .place, .wx-top .link) { background: var(--tint); border-color: transparent; }
+:root[data-theme="light"] .dash-page .wx-card[data-night="false"] :is(.wx-top .place, .wx-top .link):hover { background: var(--tint-2); }
+.wx-top .place, .wx-card .wx-top .link { border-color: transparent; }
+
+/* ── other pages: the hairlines that were standing in for borders ───────────── */
+.as-hbtn.text:disabled { box-shadow: none; }
+.page .panel.tt-card.tt-float { box-shadow: none; }

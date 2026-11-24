@@ -8,14 +8,16 @@ import { birthdayOn, nextSalary, reminderDoneOn, reminderFireTime } from "./item
 import { occursOn } from "./recurrence.ts";
 import { getData, getSettings, saveItem, type AppNotification } from "./store.ts";
 
-export type Toast = { id: string; title: string; body?: string; tone?: "info" | "ok" | "warn" };
+export type ToastAction = { label: string; run: () => void };
+export type Toast = { id: string; title: string; body?: string; tone?: "info" | "ok" | "warn"; action?: ToastAction };
 const toastListeners = new Set<(t: Toast) => void>();
 export const onToast = (fn: (t: Toast) => void) => {
   toastListeners.add(fn);
   return () => void toastListeners.delete(fn);
 };
-export function toast(title: string, body?: string, tone: Toast["tone"] = "info") {
-  const t = { id: uid(), title, body, tone };
+/** `action` adds one button to the toast (for example "Undo"); the toast then stays a little longer. */
+export function toast(title: string, body?: string, tone: Toast["tone"] = "info", action?: ToastAction) {
+  const t: Toast = { id: uid(), title, body, tone, action };
   toastListeners.forEach((l) => l(t));
 }
 
@@ -46,7 +48,9 @@ export function notify(title: string, body: string, dateKey?: string, quiet = fa
   }
 }
 
-// one-per-day markers for the settings-driven alerts (salary / birthdays / events)
+// One marker per alert that has been delivered, shared by every open tab. `once` re-reads the
+// record from localStorage at the moment of the call and writes its claim before returning, so
+// when two tabs reach the same alert only the first one to get here delivers it.
 const FIRED_KEY = "almanac.fired.v1";
 function firedSet(): Record<string, number> {
   try {
@@ -88,6 +92,8 @@ export function tick(now = new Date()) {
       const at = reminderFireTime(r, key);
       const late = now.getTime() - at.getTime();
       if (late < 0 || late > 36 * 3600000) continue;
+      // another open tab may have delivered this occurrence a moment ago: claim it first
+      if (!once(`rem:${r.id}:${key}:${r.time}:${r.lead}`)) continue;
       const when = combine(key, r.time);
       // "missed" only when the scheduled moment itself has passed, not when an early alert arrives late
       const missed = late > 5 * 60000 && now.getTime() > when.getTime() + 5 * 60000;
@@ -129,11 +135,17 @@ let timer: number | undefined;
 export function startScheduler() {
   if (timer !== undefined) return;
   const run = () => {
-    try {
-      tick();
-    } catch (err) {
-      console.error("Reminder check failed", err);
-    }
+    const check = () => {
+      try {
+        tick();
+      } catch (err) {
+        console.error("Reminder check failed", err);
+      }
+    };
+    // one tab checks at a time, so the claim one tab writes is seen by the next
+    const locks = typeof navigator !== "undefined" ? navigator.locks : undefined;
+    if (locks?.request) locks.request("almanac-scheduler", check).catch(check);
+    else check();
   };
   timer = window.setInterval(run, 15000);
   document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && run());

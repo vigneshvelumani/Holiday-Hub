@@ -48,7 +48,29 @@ interface Cloud { x: number; y: number; s: number; v: number; z: number; sp: num
 interface Drop { x: number; y: number; z: number; v: number }
 interface State {
   clouds: Cloud[]; drops: Drop[]; stars: { x: number; y: number; r: number; p: number; v: number }[]; sprites: HTMLCanvasElement[];
-  flash: number; nextFlash: number; bolt: [number, number][]; key: string;
+  nextFlash: number; strike: number; bolts: [number, number][][]; splashes: { x: number; y: number; a: number; z: number }[]; key: string;
+}
+
+// a strike flickers: a hard flash, a dip, a second flash, then it dies away
+const flicker = (age: number) => (age < 0 ? 0 : age < 0.07 ? 1 : age < 0.14 ? 0.2 : age < 0.26 ? 0.9 : Math.max(0, 0.9 - (age - 0.26) * 1.9));
+
+function forkedBolt(w: number, h: number): [number, number][][] {
+  const main: [number, number][] = [];
+  let x = w * (0.25 + Math.random() * 0.6), y = 0;
+  const end = h * (0.6 + Math.random() * 0.3);
+  main.push([x, y]);
+  while (y < end) (x += (Math.random() - 0.5) * h * 0.16), (y += h * (0.035 + Math.random() * 0.06)), main.push([x, y]);
+  const out = [main];
+  for (let b = 0; b < 2; b++) {
+    const from = main[2 + Math.floor(Math.random() * Math.max(1, main.length - 4))];
+    if (!from) continue;
+    const dir = Math.random() < 0.5 ? -1 : 1;
+    let [bx, by] = from;
+    const br: [number, number][] = [[bx, by]];
+    for (let i = 0; i < 4 + Math.floor(Math.random() * 3); i++) (bx += dir * h * (0.02 + Math.random() * 0.06)), (by += h * (0.03 + Math.random() * 0.045)), br.push([bx, by]);
+    out.push(br);
+  }
+  return out;
 }
 
 function build(sc: Scene): State {
@@ -65,7 +87,7 @@ function build(sc: Scene): State {
   const count = !wet ? 0 : sc.sky === "snow" ? Math.round(60 + sc.intensity * 160) : Math.round(50 + sc.intensity * 330);
   const drops: Drop[] = Array.from({ length: count }, () => ({ x: r(), y: r(), z: 0.3 + r() * 0.7, v: 0.6 + r() * 0.6 }));
   const stars = sc.night ? Array.from({ length: Math.round(110 * (1 - sc.cloud * 0.85)) }, () => ({ x: r(), y: r() * 0.8, r: 0.4 + r() * 1.1, p: r() * 6.28, v: 0.4 + r() * 1.4 })) : [];
-  return { clouds, drops, stars, sprites, flash: 0, nextFlash: 2.5 + r() * 3, bolt: [], key: JSON.stringify(sc) };
+  return { clouds, drops, stars, sprites, nextFlash: 1.5 + r() * 2.5, strike: -1, bolts: [], splashes: [], key: JSON.stringify(sc) };
 }
 
 function paint(g: CanvasRenderingContext2D, w: number, h: number, t: number, dt: number, sc: Scene, st: State, sunP: number, moonLit: number, px: number, py: number, still: boolean) {
@@ -103,6 +125,35 @@ function paint(g: CanvasRenderingContext2D, w: number, h: number, t: number, dt:
       glow.addColorStop(1, css(warm, 0));
       g.fillStyle = glow;
       g.fillRect(0, 0, w, h);
+      if (veil >= 0.75) {
+        // slow turning rays, each one breathing a little
+        const L = Math.max(w, h) * 0.95, k = sc.sky === "clear" ? 1 : 0.55;
+        g.save();
+        g.translate(x, y);
+        g.rotate(t * 0.045);
+        for (let i = 0; i < 12; i++) {
+          const a = (i / 12) * 6.283, half = 0.045 + 0.028 * Math.sin(t * 0.7 + i * 1.7);
+          const ray = g.createLinearGradient(0, 0, Math.cos(a) * L, Math.sin(a) * L);
+          ray.addColorStop(0, css(warm, 0.26 * k));
+          ray.addColorStop(1, css(warm, 0));
+          g.fillStyle = ray;
+          g.beginPath();
+          g.moveTo(0, 0);
+          g.lineTo(Math.cos(a - half) * L, Math.sin(a - half) * L);
+          g.lineTo(Math.cos(a + half) * L, Math.sin(a + half) * L);
+          g.closePath();
+          g.fill();
+        }
+        g.restore();
+        // lens flares on the line from the sun through the middle of the picture
+        const m = Math.min(w, h);
+        for (const [f, rr, al] of [[0.5, 0.045, 0.14], [0.85, 0.022, 0.2], [1.3, 0.075, 0.09], [1.7, 0.035, 0.12]]) {
+          g.fillStyle = css(warm, al * k);
+          g.beginPath();
+          g.arc(x + (w / 2 - x) * f, y + (h / 2 - y) * f, m * rr, 0, 6.283);
+          g.fill();
+        }
+      }
       g.fillStyle = css(mix(hex("#fffbe8"), hex("#ffd08a"), edge), veil);
       g.beginPath();
       g.arc(x, y, Math.min(w, h) * 0.075, 0, 6.283);
@@ -160,7 +211,10 @@ function paint(g: CanvasRenderingContext2D, w: number, h: number, t: number, dt:
       g.lineCap = "round";
       for (const d of st.drops) {
         if (!still) (d.y += d.v * dt * (1.5 + d.z * 1.4)), (d.x += slant * d.v * dt * 0.9);
-        if (d.y > 1.05) (d.y = -0.05), (d.x = Math.random() * 1.2 - 0.2);
+        if (d.y > 1.05) {
+          if (d.z > 0.55 && st.splashes.length < 70) st.splashes.push({ x: d.x + slant * 0.04, y: 0.9 + d.z * 0.09, a: 1, z: d.z });
+          (d.y = -0.05), (d.x = Math.random() * 1.2 - 0.2);
+        }
         const x = d.x * w + px * 14 * d.z, y = d.y * h, len = (10 + d.z * 22) * (0.7 + sc.intensity * 0.6);
         g.strokeStyle = `rgba(214,228,240,${0.16 + d.z * 0.42})`;
         g.lineWidth = 0.6 + d.z * 1.1;
@@ -168,6 +222,25 @@ function paint(g: CanvasRenderingContext2D, w: number, h: number, t: number, dt:
         g.moveTo(x, y);
         g.lineTo(x + len * slant, y + len);
         g.stroke();
+      }
+      // each near drop ends in a small ring where it lands
+      g.lineWidth = 1;
+      for (const sp of st.splashes) {
+        const rx = (2 + (1 - sp.a) * 11) * sp.z;
+        g.strokeStyle = `rgba(222,234,244,${sp.a * 0.55})`;
+        g.beginPath();
+        g.ellipse(sp.x * w, sp.y * h, rx, rx * 0.3, 0, 0, 6.283);
+        g.stroke();
+        sp.a -= dt * 3.4;
+      }
+      st.splashes = st.splashes.filter((sp) => sp.a > 0);
+      // a wet haze along the ground when it pours
+      if (sc.intensity > 0.5) {
+        const mist = g.createLinearGradient(0, h * 0.78, 0, h);
+        mist.addColorStop(0, "rgba(200,214,226,0)");
+        mist.addColorStop(1, `rgba(200,214,226,${0.2 * sc.intensity})`);
+        g.fillStyle = mist;
+        g.fillRect(0, h * 0.78, w, h * 0.22);
       }
     } else {
       for (const d of st.drops) {
@@ -182,30 +255,33 @@ function paint(g: CanvasRenderingContext2D, w: number, h: number, t: number, dt:
     }
   }
 
-  // lightning
+  // lightning: a forked bolt and a flicker that lights the whole sky
   if (sc.sky === "storm" && !still) {
     st.nextFlash -= dt;
     if (st.nextFlash <= 0) {
-      st.flash = 1;
-      st.nextFlash = 3 + Math.random() * 6;
-      let x = w * (0.2 + Math.random() * 0.6), y = 0;
-      st.bolt = [[x, y]];
-      while (y < h * (0.55 + Math.random() * 0.25)) (x += (Math.random() - 0.5) * 46), (y += 14 + Math.random() * 26), st.bolt.push([x, y]);
+      st.strike = 0;
+      st.nextFlash = 2.5 + Math.random() * 5;
+      st.bolts = forkedBolt(w, h);
     }
-    if (st.flash > 0) {
-      g.fillStyle = `rgba(225,232,255,${st.flash * 0.34})`;
+    if (st.strike >= 0) {
+      const f = flicker(st.strike);
+      g.fillStyle = `rgba(226,233,255,${f * 0.42})`;
       g.fillRect(0, 0, w, h);
-      if (st.flash > 0.45) {
-        g.strokeStyle = `rgba(255,255,255,${st.flash})`;
-        g.lineWidth = 2;
-        g.shadowColor = "rgba(190,205,255,0.9)";
-        g.shadowBlur = 16;
-        g.beginPath();
-        st.bolt.forEach(([bx, by], i) => (i ? g.lineTo(bx, by) : g.moveTo(bx, by)));
-        g.stroke();
+      if (f > 0.5) {
+        g.lineJoin = "round";
+        g.shadowColor = "rgba(190,205,255,0.95)";
+        g.shadowBlur = 18;
+        st.bolts.forEach((bolt, i) => {
+          g.strokeStyle = `rgba(255,255,255,${i ? f * 0.7 : f})`;
+          g.lineWidth = i ? 1.2 : 2.4;
+          g.beginPath();
+          bolt.forEach(([bx, by], j) => (j ? g.lineTo(bx, by) : g.moveTo(bx, by)));
+          g.stroke();
+        });
         g.shadowBlur = 0;
       }
-      st.flash = Math.max(0, st.flash - dt * 3.2);
+      st.strike += dt;
+      if (f <= 0) st.strike = -1;
     }
   }
 }

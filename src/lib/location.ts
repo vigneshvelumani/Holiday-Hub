@@ -79,21 +79,58 @@ export class GeoError extends Error {
   }
 }
 
-/** Ask the browser where the device is, then name it. */
-export function detectPlace(): Promise<Place> {
-  return new Promise((resolve, reject) => {
-    if (!("geolocation" in navigator)) return reject(new GeoError("unsupported", "This browser can't share its location. Choose a city instead."));
-    navigator.geolocation.getCurrentPosition(
-      (pos) => resolvePlace(+pos.coords.latitude.toFixed(4), +pos.coords.longitude.toFixed(4)).then(resolve, (e) => reject(new GeoError("unavailable", (e as Error).message))),
-      (err) =>
-        reject(
-          err.code === 1
-            ? new GeoError("denied", "Location permission was not granted. Choose a city below instead.")
-            : new GeoError("unavailable", err.code === 3 ? "Finding your location took too long. Try again or choose a city." : "Your location couldn't be determined. Try again or choose a city."),
-        ),
-      { timeout: 15000, maximumAge: 300000, enableHighAccuracy: false },
-    );
-  });
+export interface Detected {
+  place: Place;
+  /** radius of uncertainty in metres, as the browser reports it; null when it gives none */
+  accuracy: number | null;
+}
+
+const position = (opts: PositionOptions) => new Promise<GeolocationPosition>((ok, no) => navigator.geolocation.getCurrentPosition(ok, no, opts));
+
+/**
+ * Ask the browser where the device is, then name it. A fresh, precise fix is asked for first
+ * (GPS or Wi-Fi positioning); if the device cannot give one in time, the quicker network
+ * estimate is taken instead. A stale cached position is never reused.
+ */
+export async function detectPlace(): Promise<Detected> {
+  if (!("geolocation" in navigator)) throw new GeoError("unsupported", "This browser can't share its location. Choose a city instead.");
+  let pos: GeolocationPosition;
+  try {
+    pos = await position({ enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+  } catch (first) {
+    const e1 = first as GeolocationPositionError;
+    if (e1.code === 1) throw new GeoError("denied", "This browser is blocking location access for this site.");
+    try {
+      pos = await position({ enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 });
+    } catch (second) {
+      const e2 = second as GeolocationPositionError;
+      if (e2.code === 1) throw new GeoError("denied", "This browser is blocking location access for this site.");
+      throw new GeoError("unavailable", e2.code === 3 ? "Finding your location took too long." : "This device couldn't work out where it is.");
+    }
+  }
+  try {
+    const place = await resolvePlace(+pos.coords.latitude.toFixed(4), +pos.coords.longitude.toFixed(4));
+    return { place, accuracy: Number.isFinite(pos.coords.accuracy) ? pos.coords.accuracy : null };
+  } catch (e) {
+    throw new GeoError("unavailable", (e as Error).message);
+  }
+}
+
+/**
+ * A rough place from the network address (BigDataCloud), for when the browser will not share a
+ * position. It is only ever a suggestion: the caller must ask before using it.
+ */
+export async function networkPlace(): Promise<Place> {
+  const geo = await getJson<any>("https://api.bigdatacloud.net/data/reverse-geocode-client?localityLanguage=en");
+  if (typeof geo?.latitude !== "number" || typeof geo?.longitude !== "number") throw new Error("The location service couldn't place this network.");
+  const lat = +geo.latitude.toFixed(2), lon = +geo.longitude.toFixed(2);
+  const zone = await getJson<any>(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m&timezone=auto`);
+  if (!zone?.timezone) throw new Error("The time zone for this network's location could not be determined.");
+  const city: string | undefined = geo.city || geo.locality || undefined;
+  const region: string | undefined = geo.principalSubdivision || undefined;
+  const country: string | undefined = geo.countryName || undefined;
+  if (!city) throw new Error("The location service couldn't name a city for this network.");
+  return { name: label(city, region, country), lat, lon, tz: zone.timezone, city, region, country, countryCode: geo.countryCode || undefined };
 }
 
 /**
@@ -105,7 +142,7 @@ export function clockMismatch(place: Place, at: Date = new Date()): boolean {
   return tzOffset(place.tz, at) !== tzOffset(LOCAL_TZ, at);
 }
 
-export function setActiveLocation(place: Place, source: "gps" | "manual") {
+export function setActiveLocation(place: Place, source: "gps" | "network" | "manual") {
   updateSettings({ location: place, locationSource: source, locationUpdatedAt: Date.now(), locationPrompted: true });
 }
 

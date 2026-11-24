@@ -1,0 +1,185 @@
+/* ══ dashboard v5: zones with air ═══════════════════════════════════════════
+   Zones (hello · this week · today · month · more) are separated by white
+   space rather than boxes. Sizes follow the width of the dashboard itself
+   (container "dash"); only the page padding follows the window, because a
+   container cannot restyle itself. Loaded after tokens.css. */
+.page.dash-page { max-width: 1480px; padding: 8px 44px 96px; display: flex; flex-direction: column; gap: 48px; }
+.dash-page > * { margin: 0; }
+.dash-page .hello { padding: 30px 0 4px; gap: 32px 72px; }
+.dash-page .hello-sun { margin-top: 26px; gap: 10px; }
+/* the thought sits on the page as a pull quote, not in a card */
+.dash-page .hello-quote { background: none; border-radius: 0; padding: 2px 0 2px 24px; border-left: 3px solid var(--ink); max-width: 460px; }
+.dash-page .hello-quote blockquote { font-size: 21px; line-height: 1.35; margin-top: 10px; }
+.dash-page .hello-quote figcaption { margin-top: 12px; }
+
+.dash-page .ds-head { margin: 0 0 20px; gap: 8px 12px; }
+.dash-page .ds-head .eyebrow, .dash-page .panel-head h2 { font-size: 21px; font-weight: 800; letter-spacing: -0.035em; text-transform: none; color: var(--ink); line-height: 1.2; }
+.dash-page .ds-range { font-size: 14px; font-weight: 600; color: var(--ink-3); }
+.dash-page .ph-ico { display: none; }
+
+.dz { display: flex; flex-wrap: wrap; gap: 20px; align-items: stretch; min-width: 0; }
+.dz > * { min-width: 0; }
+.dash-page .panel { padding: 28px 30px 30px; border-radius: var(--radius-lg); }
+.dash-page .panel-head { margin-bottom: 22px; min-height: 0; }
+.dash-page .panel > .seg { margin-bottom: 6px; }
+
+/* today: schedule · weather · the two office Saturdays */
+.dz-today > .panel { flex: 1.3 1 340px; min-height: 420px; }
+.dz-today > .wx-card { flex: 1 1 300px; min-height: 420px; border-radius: var(--radius-lg); }
+.dz-sats { flex: 1 1 230px; display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 20px; }
+.dash-page .sched li { padding: 14px 0; }
+.dash-page .sched .t { font-size: 15.5px; }
+
+.dash-page .wx-in { padding: 24px 26px 22px; gap: 18px; }
+.dash-page .wx-now { margin-top: 10px; gap: 18px; }
+.dash-page .wx-now .t { font-size: 76px; }
+.dash-page .wx-facts { background: none; border: 0; border-top: 1px solid rgba(255, 255, 255, 0.24); border-radius: 0; padding: 18px 0 0; gap: 12px; }
+.dash-page .wx-facts > div { padding: 0; }
+.dash-page .wx-facts > div + div { border-left: 0; }
+.dash-page .wx-facts .v { font-size: 18px; margin-top: 4px; }
+
+/* a Saturday tile reads top to bottom: status, label, the date large, how far away */
+.dash-page .sat-card2 { grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto 1fr auto auto auto; gap: 0 12px; padding: 24px 26px; border-radius: var(--radius-lg); align-items: start; min-height: 200px; }
+.dash-page .sat-card2 .ico { grid-column: 1; grid-row: 1; }
+.dash-page .sat-card2 .tagwrap { grid-column: 2; grid-row: 1; align-self: center; }
+.dash-page .sat-card2 .k { grid-column: 1 / -1; grid-row: 3; font-size: 13.5px; }
+.dash-page .sat-card2 .v { grid-column: 1 / -1; grid-row: 4; font-size: 30px; letter-spacing: -0.045em; line-height: 1.1; margin-top: 4px; white-space: normal; }
+.dash-page .sat-card2 .n { grid-column: 1 / -1; grid-row: 5; font-size: 13.5px; margin-top: 8px; opacity: 0.86; }
+
+/* month: the calendar, with the next holidays listed openly beside it */
+.dz-month { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 20px 28px; }
+.dash-page .cal-card { padding: 28px 30px 30px; }
+.dash-page .cal-bar { margin-bottom: 22px; gap: 10px; }
+.dash-page .legend { margin-top: 22px; gap: 10px 22px; }
+.dash-page .dz-hol { background: none; padding: 28px 8px 0; border-radius: 0; }
+.dz-today > .panel > .btn { margin-top: 18px !important; }
+.dash-page .hol-list { gap: 10px; }
+.dash-page .hol-list button { grid-template-columns: 64px minmax(0, 1fr); gap: 16px; padding: 8px; margin: 0 -8px; width: calc(100% + 16px); border-radius: 20px; }
+.dash-page .hol-list .d { min-height: 56px; border-radius: 18px; font-size: 14px; }
+.dash-page .hol-list .t { font-size: 15.5px; }
+
+/* more: world clock and Panchangam share a row, the news takes its own */
+.dz-more > .panel { flex: 1 1 340px; }
+.dz-more > .panel[aria-labelledby="h-news"] { flex: 1 1 100%; }
+.dash-page .clock-row { gap: 14px; }
+.dash-page .pan-top { gap: 20px; padding-bottom: 18px; }
+.dash-page .pan-rows li { padding: 13px 0; }
+.dash-page .news-more li:nth-child(n + 3) { display: none; }
+.dash-page .news-more button { padding: 13px 0; }
+
+.dash-page .trio { gap: 20px; }
+.dash-page .trio > div { padding: 26px 28px 28px; border-radius: var(--radius-lg); }
+.dash-page .trio .big { font-size: 28px; letter-spacing: -0.04em; margin-top: 10px; line-height: 1.15; }
+.dash-page .trio .small { margin-top: 6px; }
+
+@container dash (min-width: 901px) {
+  .dash-page .ds-row { gap: 14px; }
+  .dash-page .ds-tile { min-height: 176px; padding: 18px 18px 16px; border-radius: 24px; }
+  /* wide: the lead story on the left, more headlines on the right */
+  .dz-more > .panel[aria-labelledby="h-news"] { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); column-gap: 40px; align-content: start; }
+  .dz-more > .panel[aria-labelledby="h-news"] > * { grid-column: 1 / -1; }
+  .dz-more > .panel[aria-labelledby="h-news"] > .row { margin-bottom: 20px; }
+  .dz-more > .panel[aria-labelledby="h-news"] > .news-lead { grid-column: 1; grid-row: 2; }
+  .dz-more > .panel[aria-labelledby="h-news"] > .news-under { grid-column: 1; grid-row: 3; }
+  .dz-more > .panel[aria-labelledby="h-news"] > .news-more { grid-column: 2; grid-row: 2 / span 2; margin-top: 0; border-top: 0; align-self: start; }
+  .dz-more > .panel[aria-labelledby="h-news"] > .news-more li:nth-child(n + 3) { display: block; }
+  .dz-more > .panel[aria-labelledby="h-news"] > .news-more li:first-child button { padding-top: 0; }
+}
+@container dash (max-width: 1000px) {
+  .dz-month { grid-template-columns: minmax(0, 1fr); }
+  .dash-page .dz-hol { padding: 8px 8px 0; }
+  /* the schedule is on a row of its own here, so it is only as tall as what is in it */
+  .dz-today > .panel { min-height: 0; }
+  .dz-today > .panel > .btn { margin-top: 18px !important; }
+  .dash-page .hol-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 8px 24px; }
+}
+@container dash (max-width: 640px) {
+  .dash-page .hello { padding: 12px 0 0; gap: 24px; }
+  .dash-page .hello-quote { padding-left: 16px; max-width: none; }
+  .dash-page .hello-quote blockquote { font-size: 17px; }
+  .dash-page .ds-head { margin-bottom: 14px; }
+  .dash-page .panel, .dash-page .cal-card { padding: 22px 18px 22px; border-radius: var(--radius); }
+  .dash-page .dz-hol { padding: 4px 8px 0; border-radius: 0; }
+  .dz { gap: 14px; }
+  .dz-sats { gap: 14px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dash-page .sat-card2 { padding: 18px 16px; min-height: 170px; border-radius: var(--radius); }
+  .dash-page .sat-card2 .v { font-size: 22px; }
+  .dash-page .sat-card2 .ico { width: 38px; height: 38px; border-radius: 13px; }
+  .dz-today > .panel { min-height: 0; }
+  .dz-today > .wx-card { border-radius: var(--radius); }
+  .dash-page .wx-in { padding: 20px 18px 18px; }
+  .dash-page .wx-now .t { font-size: 64px; }
+  .dash-page .trio > div { padding: 22px 20px; border-radius: var(--radius); }
+  .dash-page .trio .big { font-size: 24px; }
+}
+@media (max-width: 1280px) { .page.dash-page { padding-left: 28px; padding-right: 28px; gap: 40px; } }
+@media (max-width: 900px) { .page.dash-page { padding: 4px 16px 110px; gap: 32px; } }
+
+/* light theme, daytime: the weather card is a light card — the live sky shows through a white veil
+   and the reading is dark ink. At night (and in the dark theme) it stays a dark sky with white text. */
+:root[data-theme="light"] .dash-page .wx-card[data-night="false"] { color: var(--ink); }
+:root[data-theme="light"] .dash-page .wx-card[data-night="false"] .scene-scrim { background: linear-gradient(180deg, rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.7) 45%, rgba(255, 255, 255, 0.84)); }
+:root[data-theme="light"] .dash-page .wx-card[data-night="false"] :is(.wx-top .place, .wx-top .link) { background: rgba(255, 255, 255, 0.7); border-color: rgba(14, 14, 17, 0.14); color: var(--ink); }
+:root[data-theme="light"] .dash-page .wx-card[data-night="false"] :is(.wx-top .place, .wx-top .link):hover { background: #fff; color: var(--ink); }
+:root[data-theme="light"] .dash-page .wx-card[data-night="false"] :is(.link, .wx-foot .link) { color: var(--ink); }
+:root[data-theme="light"] .dash-page .wx-card[data-night="false"] :is(.wx-facts .k, .wx-foot) { color: var(--ink-2); }
+:root[data-theme="light"] .dash-page .wx-card[data-night="false"] .wx-facts { border-top-color: rgba(14, 14, 17, 0.16); }
+:root[data-theme="light"] .dash-page .wx-card[data-night="false"] .wx-facts .s { color: var(--warn); }
+:root[data-theme="light"] .dash-page .wx-card[data-night="false"] :focus-visible { outline-color: var(--ink); }
+
+/* light theme: a city where it is night gets a soft lilac clock face, not a navy one (the time beside it says am/pm) */
+:root[data-theme="light"] .dash-page .aclock.night .face { fill: #e2ddf5; stroke: #b9b2da; }
+:root[data-theme="light"] .dash-page .aclock.night .tick { stroke: #5c5c67; }
+:root[data-theme="light"] .dash-page .aclock.night .tick.major, :root[data-theme="light"] .dash-page .aclock.night .hand:not(.sec) { stroke: #0e0e11; }
+:root[data-theme="light"] .dash-page .aclock.night text { fill: #3d3d46; }
+
+/* ══ v6: one 12-column grid ═════════════════════════════════════════════════
+   Every block starts and ends on the same two lines (columns 4 and 8), rows are equal height,
+   and every block is the same kind of surface: a filled panel, no outline, no shadow, no rules. */
+.dash-page .dz { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 20px; align-items: stretch; }
+.dash-page .dz > * { grid-column: span 4; min-width: 0; }
+.dash-page .dz-today > .panel, .dash-page .dz-today > .wx-card { min-height: 440px; }
+.dash-page .dz-today > .panel > .btn { margin-top: auto !important; }
+.dash-page .dz-sats { display: grid; grid-template-columns: minmax(0, 1fr); grid-auto-rows: 1fr; gap: 20px; }
+/* with the weather widget switched off the schedule takes its columns too */
+.dash-page .dz-today > .panel:nth-last-child(2) { grid-column: span 8; }
+.dash-page .dz-month > .cal-card { grid-column: span 8; }
+.dash-page .dz-month > .cal-card:only-child { grid-column: 1 / -1; }
+/* beside the month: the next holidays, then the three small tiles, filling the same height */
+.dash-page .dz-side { display: flex; flex-direction: column; gap: 20px; }
+.dash-page .panel.dz-hol { background: var(--surface); padding: 28px 30px 26px; border-radius: var(--radius-lg); }
+.dash-page .dz-side .trio { display: flex; flex-direction: column; gap: 20px; flex: 1; }
+.dash-page .dz-side .trio > div { flex: 1; justify-content: center; }
+.dash-page .dz-more > .panel[aria-labelledby="h-news"] { grid-column: span 8; }
+.dash-page .dz-stack { display: grid; grid-template-columns: minmax(0, 1fr); grid-auto-rows: 1fr; gap: 20px; }
+.dash-page .dz-more > :only-child { grid-column: 1 / -1; }
+.dash-page .clock-row { gap: 6px; }
+
+@container dash (max-width: 1000px) {
+  .dash-page .dz > * { grid-column: 1 / -1; }
+  .dash-page .dz-today > .wx-card, .dash-page .dz-today > .dz-sats { grid-column: span 6; }
+  .dash-page .dz-today > :nth-child(2):last-child { grid-column: 1 / -1; }
+  .dash-page .dz-today > .panel { min-height: 0; }
+  .dash-page .dz-today > .panel > .btn { margin-top: 18px !important; }
+  .dash-page .dz-month > .cal-card { grid-column: 1 / -1; }
+  .dash-page .panel.dz-hol { padding: 28px 30px 26px; }
+  .dash-page .dz-side .trio { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .dash-page .dz-more > .panel[aria-labelledby="h-news"] { grid-column: 1 / -1; }
+  .dash-page .dz-stack { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: auto; }
+}
+@container dash (max-width: 640px) {
+  .dash-page .dz { gap: 14px; }
+  .dash-page .dz-today > .wx-card, .dash-page .dz-today > .dz-sats { grid-column: 1 / -1; }
+  .dash-page .dz-today > .wx-card { min-height: 0; }
+  .dash-page .dz-sats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+  .dash-page .dz-side, .dash-page .dz-side .trio, .dash-page .dz-stack { gap: 14px; }
+  .dash-page .panel.dz-hol { padding: 22px 18px; border-radius: var(--radius); }
+  .dash-page .dz-side .trio, .dash-page .dz-stack { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* news in its 8 columns: spare height goes under the summary, never between the picture and its text */
+@container dash (min-width: 901px) {
+  .dash-page .dz-more > .panel[aria-labelledby="h-news"] { grid-template-rows: auto auto 1fr auto; column-gap: 32px; }
+  .dash-page .dz-more > .panel[aria-labelledby="h-news"] > :is(.news-lead, .news-under) { align-self: start; }
+  .dash-page .dz-more > .panel[aria-labelledby="h-news"] > .news-lead { aspect-ratio: 16 / 10; }
+}

@@ -44,7 +44,15 @@ export function useSky(s: Settings): SkyState {
       /* keep the neutral value */
     }
     const c = w?.current;
-    const scene = c ? sceneFor({ code: c.code, isDay: c.isDay, precip: c.precip, cloud: c.cloud, wind: c.wind }) : null;
+    let scene = c ? sceneFor({ code: c.code, isDay: c.isDay, precip: c.precip, cloud: c.cloud, wind: c.wind }) : null;
+    // development only: preview an effect without waiting for that weather (never in a production build)
+    if (c && import.meta.env?.DEV) {
+      const o = localStorage.getItem("almanac.debugSky");
+      if (o) {
+        const [code, day] = o.split(":");
+        scene = sceneFor({ code: Number(code), isDay: day !== "n", precip: c.precip, cloud: c.cloud, wind: c.wind });
+      }
+    }
     return { scene, sunProgress, moonLit, weather };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [w, minute, s.location, weather.loading, weather.error]);

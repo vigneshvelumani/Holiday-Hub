@@ -100,12 +100,12 @@ export function Seg<T extends string>({ value, options, onChange, label }: { val
   );
 }
 
-export function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
+export function Field({ label, hint, error, children }: { label: string; hint?: string; /** validation message shown right under the control */ error?: string; children: ReactNode }) {
   return (
     <label className="field">
       <span className="label">{label}</span>
       {children}
-      {hint && <span className="hint">{hint}</span>}
+      {error ? <span className="err" role="alert"><AlertTriangle size={13} aria-hidden /> {error}</span> : hint && <span className="hint">{hint}</span>}
     </label>
   );
 }

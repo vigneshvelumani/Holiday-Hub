@@ -1,104 +1,142 @@
-/* Time converter + meeting planner (src/components/TimeTools.tsx).
+/* Time converter + meeting planner (src/components/TimeTools.tsx) — v4 "mono + pastel".
    Colours come only from the theme tokens, so light and dark both work.
-   State is never colour alone: working hours are bold with a solid underline,
-   shoulder hours have a dotted underline, night has a moon, best columns a tick. */
+   State is never colour alone: working hours are bold with a solid underline, shoulder hours
+   are hatched, night has a moon, best columns carry a tick, a label and a count.
+   (Emitted before the global layers: rules are scoped under .page .tt-card.) */
 
-.tt-card { min-width: 0; }
+.tt-card { min-width: 0; scroll-margin-top: 84px; container: tt / inline-size; }
+.page .tt-card .panel-head { align-items: flex-start; flex-wrap: wrap; gap: 12px 20px; margin-bottom: 20px; }
+.tt-card .panel-head > div:first-child { min-width: 0; flex: 1 1 280px; }
+.tt-lede { margin: 4px 0 0; font-size: 13px; font-weight: 500; color: var(--ink-3); }
 .tt-stack { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 .tt-stack p { margin: 0; }
+/* the converter is the one card on the page that floats */
+.page .panel.tt-card.tt-float { box-shadow: var(--shadow-lift); }
 
-/* ── controls ── */
-.tt-controls { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+/* pill controls */
+.page .tt-card .btn.tt-pillbtn { height: 44px; padding: 0 20px; border: 0; border-radius: var(--pill); background: var(--btn); color: var(--btn-ink); font-size: 14px; font-weight: 700; flex: none; box-shadow: none; }
+.page .tt-card .btn.tt-pillbtn:disabled { background: var(--surface-2); color: var(--ink-3); opacity: 1; }
+.page .tt-card .field { gap: 6px; }
+.page .tt-card .field .label { padding-left: 16px; font-size: 12.5px; font-weight: 700; color: var(--ink-2); }
+.page .tt-card .input, .page .tt-card .select { width: 100%; min-width: 0; max-width: 100%; height: 46px; padding-left: 16px; border: 0; border-radius: var(--pill); background-color: var(--surface-2); color: var(--ink); font-size: 15px; font-weight: 700; box-shadow: none; }
+.page .tt-card .input:hover, .page .tt-card .select:hover { background-color: var(--line); }
+
+/* ── converter: the question on the left, the answer on the right ── */
+.tt-conv { display: grid; grid-template-columns: minmax(260px, 330px) minmax(0, 1fr); gap: 20px 28px; align-items: start; }
+.tt-controls { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px 8px; }
 .tt-controls .tt-zone { grid-column: 1 / -1; }
-.tt-controls .input, .tt-controls .select, .tt-plan-controls .input { width: 100%; min-width: 0; max-width: 100%; }
-.tt-plan-controls { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; }
-.tt-plan-controls .field { flex: 0 1 220px; }
+.tt-plan-controls { display: flex; align-items: flex-end; gap: 8px; flex: none; }
+.tt-plan-controls .field { flex: 0 1 200px; }
 
 /* ── notes ── */
-.tt-note { display: flex; gap: 8px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line-strong); border-left: 3px solid var(--today); border-radius: var(--radius-sm); font-size: 13px; line-height: 1.45; color: var(--ink); background: var(--surface); }
-.tt-note svg { flex: none; margin-top: 2px; color: var(--today); }
-.tt-link { border: 0; background: none; padding: 0; font: inherit; font-weight: 600; color: var(--accent); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
-.tt-summary { font-size: 13px; color: var(--ink-2); }
-.tt-summary .num { font-weight: 700; color: var(--ink); }
+.tt-note { display: flex; gap: 10px; align-items: flex-start; padding: 14px 18px; border-radius: var(--radius); font-size: 13.5px; line-height: 1.45; font-weight: 500; background: var(--p-peach); color: var(--p-peach-ink); }
+.tt-note svg { flex: none; margin-top: 2px; }
+.tt-link { border: 0; background: none; padding: 0; font: inherit; font-weight: 800; color: inherit; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; border-radius: 4px; }
+.tt-link:hover { text-decoration-thickness: 2px; }
+.tt-summary { font-size: 14px; color: var(--ink-2); padding-left: 4px; }
+.tt-summary .num { font-weight: 800; color: var(--ink); }
 
-/* ── result rows (converter, and the planner's selected hour) ── */
-.tt-rows { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
-.tt-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 14px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
-.tt-row:last-child { border-bottom: 0; padding-bottom: 0; }
-.tt-row-src { border-left: 3px solid var(--accent); padding-left: 10px; }
+/* ── result rows (converter, and the planner's selected hour): small tiles with a big time ── */
+.tt-rows { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(216px, 1fr)); gap: 8px; }
+.tt-row { display: flex; flex-direction: column; justify-content: space-between; gap: 14px; min-width: 0; padding: 14px 18px 16px; border-radius: 20px; background: var(--surface-2); color: var(--ink); }
+/* the source: a black tile */
+.tt-row-src { --ink: var(--btn-ink); --ink-2: var(--btn-ink); --ink-3: var(--btn-ink); --line-strong: var(--btn-ink); background: var(--btn); color: var(--btn-ink); }
 .tt-row-place { min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; }
-.tt-row-label { font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
-.tt-row-zone { flex-basis: 100%; font-size: 12px; color: var(--ink-3); }
-.tt-row-when { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; text-align: right; min-width: 0; }
-.tt-row-time { font-family: var(--display); font-size: 22px; line-height: 1.1; color: var(--ink); white-space: nowrap; }
-.tt-row-time-sm { font-size: 17px; }
-.tt-row-date { font-size: 12px; color: var(--ink-3); display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 4px 6px; }
+.tt-row-label { font-size: 15px; font-weight: 700; color: var(--ink); overflow-wrap: break-word; min-width: 0; }
+.tt-row-zone { flex-basis: 100%; font-size: 12.5px; font-weight: 500; color: var(--ink-3); }
+.tt-row-when { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; }
+.tt-row-time { font-size: 40px; line-height: 0.95; font-weight: 600; letter-spacing: -0.06em; color: var(--ink); white-space: nowrap; }
+.tt-row-time-sm { font-size: 26px; letter-spacing: -0.05em; }
+.tt-row-date { font-size: 12.5px; font-weight: 600; color: var(--ink-3); display: flex; flex-wrap: wrap; align-items: center; gap: 5px 6px; }
 
-.tt-tag { display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px; border: 1px solid var(--line-strong); border-radius: 999px; font-size: 11.5px; font-weight: 600; line-height: 1.5; color: var(--ink); white-space: nowrap; }
-.tt-tag-src { border-color: var(--accent); color: var(--accent); }
-.tt-tag-day { border-color: var(--today); }
-.tt-tag-work { background: var(--accent-soft); border-color: var(--accent); }
-.tt-tag-early, .tt-tag-late { border-style: dotted; border-color: var(--ink-3); }
-.tt-tag-night { background: var(--surface-2); color: var(--ink-2); }
+.tt-tag { display: inline-flex; align-items: center; gap: 4px; min-height: 22px; padding: 1px 9px; border-radius: var(--pill); box-shadow: inset 0 0 0 1.5px var(--line-strong); font-size: 11.5px; font-weight: 700; line-height: 1.5; color: var(--ink); white-space: nowrap; }
+.tt-tag-src { box-shadow: inset 0 0 0 1.5px var(--btn-ink); color: var(--btn-ink); }
+.tt-tag-day { box-shadow: none; background: var(--ink); color: var(--surface); }
+.tt-tag-work { box-shadow: none; background: var(--p-sage); color: var(--p-sage-ink); }
+.tt-tag-early, .tt-tag-late { box-shadow: none; background: var(--p-peach) repeating-linear-gradient(135deg, transparent 0 4px, color-mix(in srgb, var(--p-peach-ink) 14%, transparent) 4px 6px); color: var(--p-peach-ink); }
+.tt-tag-night { box-shadow: none; background: var(--p-grey); color: var(--p-grey-ink); }
+/* light theme: the source tile is lilac, not black (it still carries the "Source" tag) */
+:root[data-theme="light"] .page .tt-row-src { --ink: var(--p-lilac-ink); --ink-2: var(--p-lilac-ink); --ink-3: var(--p-lilac-ink); --line-strong: var(--p-lilac-ink); --surface: #ffffff; background: var(--p-lilac); color: var(--p-lilac-ink); }
+:root[data-theme="light"] .page .tt-row-src .tt-tag-src { box-shadow: inset 0 0 0 1.5px var(--p-lilac-ink); color: var(--p-lilac-ink); }
 
 /* ── planner ── */
-.tt-verdict { font-size: 14px; color: var(--ink); line-height: 1.45; }
-.tt-verdict svg { vertical-align: -2px; color: var(--accent); }
+.tt-verdict { padding: 14px 18px; border-radius: var(--radius); background: var(--today-soft); font-size: 14.5px; font-weight: 500; color: var(--ink); line-height: 1.45; }
+.tt-verdict svg { vertical-align: -2px; }
 
-.tt-legend { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 12px; color: var(--ink-2); }
-.tt-legend li { display: inline-flex; align-items: center; gap: 7px; }
-.tt-swatch { display: inline-block; width: 26px; height: 24px; flex: none; border: 1px solid var(--line); font-size: 11px; text-align: center; }
-.tt-swatch .tt-cell-in, .tt-swatch .tt-hbtn { height: 100%; min-height: 0; flex-direction: row; gap: 1px; }
+.tt-legend { list-style: none; margin: 0; padding: 0 4px; display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 12.5px; color: var(--ink-2); }
+.tt-legend li { display: inline-flex; align-items: center; gap: 8px; }
+.tt-swatch { display: inline-block; width: 30px; height: 28px; flex: none; font-size: 11.5px; text-align: center; }
+.tt-swatch .tt-cell-in, .tt-swatch .tt-hbtn { height: 100%; min-height: 0; flex-direction: row; gap: 1px; border-radius: 9px; }
 
 /* position: relative keeps the visually-hidden (absolutely positioned) cell text inside the scroller, so it cannot widen the page */
-.tt-scroll { position: relative; overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius-sm); max-width: 100%; }
+.tt-scroll { position: relative; overflow-x: auto; border-radius: var(--radius-sm); max-width: 100%; padding-bottom: 6px; scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; overscroll-behavior-x: contain; scroll-padding-left: 148px; }
+/* (scroll-padding keeps a focused hour from hiding under the sticky first column) */
 .tt-scroll:focus-visible { outline-offset: 1px; }
-.tt-grid { border-collapse: separate; border-spacing: 0; width: max-content; min-width: 100%; font-size: 12.5px; font-variant-numeric: tabular-nums; color: var(--ink); }
-.tt-grid th, .tt-grid td { padding: 0; margin: 0; text-align: center; font-weight: 400; border: 0; border-bottom: 1px solid var(--line); text-transform: none; letter-spacing: 0; color: inherit; background: var(--surface); }
-.tt-grid tfoot th, .tt-grid tfoot td { border-bottom: 0; }
-.tt-grid .tt-rowhead { position: sticky; left: 0; z-index: 2; width: 128px; min-width: 128px; max-width: 128px; padding: 6px 10px; text-align: left; font-size: 12.5px; font-weight: 600; color: var(--ink); background: var(--surface); border-right: 1px solid var(--line-strong); }
+/* fills the panel when there is room for all 24 hours; scrolls sideways when there is not */
+.tt-grid { border-collapse: separate; border-spacing: 0; width: 100%; min-width: max-content; table-layout: auto; font-size: 13px; font-variant-numeric: tabular-nums; color: var(--ink); }
+.page .tt-grid th, .page .tt-grid td { padding: 2px; margin: 0; text-align: center; font-weight: 500; border: 0; text-transform: none; letter-spacing: 0; color: inherit; background: var(--surface); }
+.page .tt-grid .tt-rowhead { position: sticky; left: 0; z-index: 2; width: 140px; min-width: 140px; max-width: 140px; padding: 6px 12px 6px 4px; text-align: left; font-size: 13.5px; font-weight: 700; color: var(--ink); background: var(--surface); }
+.page .tt-grid thead .tt-rowhead, .page .tt-grid tfoot .tt-rowhead { font-size: 12.5px; font-weight: 700; color: var(--ink-3); }
 .tt-rowhead-label { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tt-rowhead-zone { display: block; font-size: 11px; font-weight: 400; color: var(--ink-3); }
-.tt-hour, .tt-cell, .tt-count-cell { width: 42px; min-width: 42px; }
+.tt-rowhead-zone { display: block; font-size: 11.5px; font-weight: 500; color: var(--ink-3); }
+.tt-hour, .tt-cell, .tt-count-cell { min-width: 46px; }
 .tt-cell, .tt-count-cell { cursor: pointer; }
 
-.tt-hbtn, .tt-cell-in { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; min-height: 42px; line-height: 1.15; box-sizing: border-box; }
-.tt-hbtn { appearance: none; border: 0; border-radius: 0; background: none; padding: 0; margin: 0; font: inherit; font-weight: 600; color: var(--ink); cursor: pointer; }
-.tt-hbtn:hover { background: var(--surface-2); }
-/* two-tone ring so focus shows on plain and on filled (best) headers alike */
-.tt-hbtn:focus-visible, .tt-sel .tt-hbtn:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; box-shadow: inset 0 0 0 4px var(--surface); position: relative; z-index: 1; }
-.tt-sub { display: inline-flex; align-items: center; gap: 2px; min-height: 12px; font-size: 10px; font-weight: 400; line-height: 1.2; }
-.tt-now .tt-sub { font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
+/* the bracket over the best hours: lime, with the words */
+.tt-bestrow td { height: 30px; vertical-align: bottom; }
+.tt-bestlab { display: flex; align-items: center; justify-content: center; gap: 4px; height: 24px; border-radius: var(--pill); background: var(--today); color: var(--today-ink); font-size: 11.5px; font-weight: 800; white-space: nowrap; overflow: hidden; }
 
-.tt-cell-in { border-bottom: 3px solid transparent; }
-.tt-k-work .tt-cell-in { background: var(--accent-soft); color: var(--ink); font-weight: 700; border-bottom: 3px solid var(--accent); }
-.tt-k-early .tt-cell-in, .tt-k-late .tt-cell-in { border-bottom: 3px dotted var(--ink-3); }
-.tt-k-night .tt-cell-in { background: var(--surface-2); color: var(--ink-3); }
-.tt-newday .tt-cell-in { border-left: 2px solid var(--ink); }
-.tt-newday .tt-sub { font-weight: 700; color: var(--ink); }
+.tt-hbtn, .tt-cell-in { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; min-height: 46px; line-height: 1.15; box-sizing: border-box; border-radius: 13px; }
+.tt-hbtn { appearance: none; border: 0; background: var(--surface-2); padding: 0; margin: 0; font: inherit; font-weight: 800; color: var(--ink); cursor: pointer; transition: background-color var(--dur-1) ease; }
+.tt-hbtn:hover { background: var(--line); }
+.tt-hbtn:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; position: relative; z-index: 1; }
+.tt-sub { display: inline-flex; align-items: center; gap: 2px; min-height: 12px; font-size: 10.5px; font-weight: 600; line-height: 1.2; }
+.tt-now .tt-sub { font-weight: 800; text-decoration: underline; text-underline-offset: 2px; }
 
-/* best-overlap columns: filled header with a tick in the count row */
-.tt-best .tt-hbtn { background: var(--accent); color: var(--accent-ink); }
-.tt-best .tt-hbtn:hover { background: var(--accent); text-decoration: underline; }
-.tt-count { display: flex; align-items: center; justify-content: center; gap: 1px; min-height: 28px; font-size: 11px; color: var(--ink-3); }
-.tt-best .tt-count { color: var(--ink); font-weight: 700; }
+/* working = sage + bold + solid underline; shoulder = peach + hatch; night = grey + moon; other = plain */
+.tt-k-work .tt-cell-in { background: var(--p-sage); color: var(--p-sage-ink); font-weight: 800; box-shadow: inset 0 -3px 0 var(--p-sage-ink); }
+.tt-k-early .tt-cell-in, .tt-k-late .tt-cell-in { background: var(--p-peach) repeating-linear-gradient(135deg, transparent 0 5px, color-mix(in srgb, var(--p-peach-ink) 14%, transparent) 5px 7px); color: var(--p-peach-ink); font-weight: 600; }
+.tt-k-night .tt-cell-in { background: var(--p-grey); color: var(--p-grey-ink); }
+.tt-newday .tt-cell-in { border-left: 3px solid var(--ink); border-top-left-radius: 4px; border-bottom-left-radius: 4px; }
+.tt-newday .tt-sub { font-weight: 800; }
+
+/* best-overlap columns: lime header with a tick in the count row */
+.tt-best .tt-hbtn { background: var(--today); color: var(--today-ink); }
+.tt-best .tt-hbtn:hover { background: var(--today); text-decoration: underline; }
+.tt-count { display: flex; align-items: center; justify-content: center; gap: 1px; min-height: 28px; border-radius: var(--pill); font-size: 11.5px; font-weight: 600; color: var(--ink-3); }
+.tt-best .tt-count { background: var(--today); color: var(--today-ink); font-weight: 800; }
 
 /* selected column: a frame, not a colour */
-.tt-sel .tt-hbtn, .tt-sel .tt-cell-in, .tt-sel .tt-count { box-shadow: inset 2px 0 0 var(--ink), inset -2px 0 0 var(--ink); }
-.tt-sel .tt-hbtn { box-shadow: inset 2px 0 0 var(--ink), inset -2px 0 0 var(--ink), inset 0 2px 0 var(--ink); }
-.tt-sel .tt-count { box-shadow: inset 2px 0 0 var(--ink), inset -2px 0 0 var(--ink), inset 0 -2px 0 var(--ink); }
+.tt-sel .tt-hbtn, .tt-sel .tt-cell-in, .tt-sel .tt-count { outline: 2px solid var(--ink); outline-offset: -2px; }
+.tt-sel .tt-k-work .tt-cell-in, .tt-sel.tt-k-work .tt-cell-in { outline-color: var(--ink); }
+.tt-sel .tt-hbtn { background: var(--btn); color: var(--btn-ink); }
+.tt-sel.tt-best .tt-hbtn { background: var(--today); color: var(--today-ink); }
+.tt-sel .tt-hbtn:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; }
 
-.tt-detail-title { margin: 0 0 8px; font-size: 14px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
-.tt-detail-count { font-weight: 400; color: var(--ink-3); }
+.tt-detail { padding: 4px 0 0; }
+.tt-detail-title { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 12px; padding-left: 4px; font-size: 18px; font-weight: 800; letter-spacing: -0.03em; color: var(--ink); font-variant-numeric: tabular-nums; }
+.tt-detail-count { display: inline-flex; align-items: center; min-height: 28px; padding: 0 12px; border-radius: var(--pill); background: var(--surface-2); font-size: 12.5px; font-weight: 700; letter-spacing: 0; color: var(--ink-2); }
+.tt-detail .tt-rows { grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); }
 
-@media (max-width: 560px) {
-  .tt-grid .tt-rowhead { width: 78px; min-width: 78px; max-width: 78px; padding: 6px; font-size: 12px; }
-  .tt-hour, .tt-cell, .tt-count-cell { width: 38px; min-width: 38px; }
-  .tt-row { grid-template-columns: minmax(0, 1fr); }
-  .tt-row-when { align-items: flex-start; text-align: left; }
-  .tt-row-date { justify-content: flex-start; }
+@container tt (max-width: 820px) {
+  .tt-conv { grid-template-columns: minmax(0, 1fr); }
+}
+@container tt (max-width: 640px) {
+  .page .tt-card .panel-head { margin-bottom: 16px; }
+  .page .tt-card .input, .page .tt-card .select { font-size: 16px; }
+  .tt-plan-controls { flex: 1 1 100%; }
+  .tt-plan-controls .field { flex: 1 1 auto; }
+  .page .tt-grid .tt-rowhead { width: 108px; min-width: 108px; max-width: 108px; padding: 6px 8px 6px 2px; font-size: 12.5px; }
+  .tt-scroll { scroll-padding-left: 116px; }
+  .tt-rows, .tt-detail .tt-rows { grid-template-columns: minmax(0, 1fr); }
   .tt-row-time { white-space: normal; }
+  .tt-row-time { font-size: 34px; }
+  .tt-row-time-sm { font-size: 24px; }
+  .tt-legend { flex-direction: column; gap: 6px; }
+  .tt-detail-title { font-size: 16px; }
 }
 @media (forced-colors: active) {
   .tt-best .tt-hbtn { outline: 2px solid CanvasText; outline-offset: -4px; }
+  .tt-k-work .tt-cell-in { border-bottom: 3px solid CanvasText; }
+  .tt-k-early .tt-cell-in, .tt-k-late .tt-cell-in { border-bottom: 3px dotted CanvasText; }
 }
