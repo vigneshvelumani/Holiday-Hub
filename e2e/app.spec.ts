@@ -200,10 +200,11 @@ test.describe("tasks, reminders and events", () => {
 });
 
 test.describe("storage", () => {
-  test("theme choice persists; clearing site data returns to first visit", async ({ page }) => {
+  test("the app is dark only: no theme switch, and a light device setting changes nothing", async ({ page }) => {
+    await page.emulateMedia({ colorScheme: "light" });
     await open(page);
-    await page.getByRole("button", { name: "Dark theme" }).click();
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+    await expect(page.getByRole("button", { name: /light theme/i })).toHaveCount(0);
     await page.reload();
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   });
