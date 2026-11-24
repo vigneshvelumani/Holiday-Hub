@@ -289,9 +289,6 @@ export function SettingsPage() {
 
         <div className="st-main">
           <Section id="appearance" title="Appearance" note="How Holiday Hub looks on this device.">
-            <Row title="Theme" desc="Light, dark, or follow this device's setting.">
-              <Seg value={s.theme} onChange={(v) => set({ theme: v })} label="Theme" options={[{ value: "system", label: "System" }, { value: "light", label: "Light" }, { value: "dark", label: "Dark" }]} />
-            </Row>
             <Row title="Sidebar" desc="Collapse the side menu to icons to give the page more room.">
               <Seg value={s.sidebarCollapsed ? "min" : "full"} onChange={(v) => set({ sidebarCollapsed: v === "min" })} label="Sidebar" options={[{ value: "full", label: "Expanded" }, { value: "min", label: "Collapsed" }]} />
             </Row>

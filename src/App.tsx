@@ -1,6 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import {
-  Bell, BellOff, Cake, CalendarDays, Check, CheckCheck, CircleCheck, CloudSun, Flag, Globe2, Info, LayoutDashboard, ListTodo, MapPin, Menu, Moon, MoonStar, Newspaper, PanelLeftClose, PanelLeftOpen, Plus, Search, SearchX, Settings as SettingsIcon, Sun, Trash2, TriangleAlert, X,
+  Bell, BellOff, Cake, CalendarDays, Check, CheckCheck, CircleCheck, CloudSun, Flag, Globe2, Info, LayoutDashboard, ListTodo, MapPin, Menu, MoonStar, Newspaper, PanelLeftClose, PanelLeftOpen, Plus, Search, SearchX, Settings as SettingsIcon, Trash2, TriangleAlert, X,
 } from "lucide-react";
 import { fmt, parseYmd, startOfDay, today, ymd, type Ymd } from "./lib/dates.ts";
 import { newEvent, newReminder, newTask, openTaskRows, search, type SearchHit } from "./lib/items.ts";
@@ -50,18 +50,12 @@ type Editing =
   | { kind: "birthdays" }
   | null;
 
-function useTheme(theme: "system" | "light" | "dark") {
+// Holiday Hub has one look: dark. The attribute is what every stylesheet keys on.
+function useTheme() {
   useEffect(() => {
-    const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    const apply = () => {
-      const dark = theme === "dark" || (theme === "system" && mq.matches);
-      document.documentElement.dataset.theme = dark ? "dark" : "light";
-      document.querySelector('meta[name="theme-color"]')?.setAttribute("content", dark ? "#0a0a0c" : "#f3f2f6");
-    };
-    apply();
-    mq.addEventListener("change", apply);
-    return () => mq.removeEventListener("change", apply);
-  }, [theme]);
+    document.documentElement.dataset.theme = "dark";
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", "#0a0a0c");
+  }, []);
 }
 
 export default function App() {
@@ -81,15 +75,13 @@ export default function App() {
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
-  // derived from the setting itself (not from the attribute an effect writes later), so the switch is right on the same render
-  const dark = s.theme === "dark" || (s.theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
   // first visit: ask where the visitor is instead of silently assuming a city
   useEffect(() => {
     if (data.ready && !s.locationPrompted) setLocOpen("welcome");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data.ready]);
   useTodayKey(); // re-render everything when the date rolls over at midnight
-  useTheme(s.theme);
+  useTheme();
 
   // older saves stored a bare "My location" with the device time zone — give it its real name and zone
   useEffect(() => {
@@ -230,10 +222,6 @@ export default function App() {
           </nav>
           {!s.sidebarCollapsed && <RailPanels />}
           <div className="sidebar-foot">
-            <div className="theme-switch" role="group" aria-label="Colour theme">
-              <button type="button" aria-pressed={!dark} aria-label="Light theme" title="Light theme" onClick={() => updateSettings({ theme: "light" })}><Sun size={15} /> <span>Light</span></button>
-              <button type="button" aria-pressed={dark} aria-label="Dark theme" title="Dark theme" onClick={() => updateSettings({ theme: "dark" })}><Moon size={15} /> <span>Dark</span></button>
-            </div>
             <span className="sidebar-note">No sign-in. Everything you add stays in this browser.</span>
           </div>
         </div>
@@ -248,9 +236,6 @@ export default function App() {
             <span className="hide-sm"><LocationChip onOpen={() => setLocOpen("manual")} /></span>
             <ClockChip hour12={s.hour12} onClick={() => go("world")} />
             <NewMenu date={newDate} />
-            <button className="btn ghost icon only-sm" aria-label={`Switch to ${dark ? "light" : "dark"} theme`} onClick={() => updateSettings({ theme: dark ? "light" : "dark" })}>
-              {dark ? <Sun size={18} /> : <Moon size={18} />}
-            </button>
             <NotificationCentre />
             <button className="btn ghost icon hide-sm" aria-label="Settings" aria-current={route === "settings" ? "page" : undefined} onClick={() => go("settings")}><SettingsIcon size={18} /></button>
           </header>
